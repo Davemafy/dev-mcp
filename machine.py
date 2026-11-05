@@ -25,11 +25,23 @@ def checked_path(value: str) -> str:
 class Machine:
     def __init__(self, oauth: OAuth, sandbox_factory: Callable | None = None):
         self.oauth=oauth
+        self.e2b_configured = bool(os.getenv("E2B_API_KEY")) or sandbox_factory is not None
         if sandbox_factory is None:
-            if not os.getenv("E2B_API_KEY"):
-                raise RuntimeError("Set E2B_API_KEY on Railway before starting dev-mcp")
-            from e2b import Sandbox
-            sandbox_factory=Sandbox
+            if os.getenv("E2B_API_KEY"):
+                from e2b import Sandbox
+                sandbox_factory=Sandbox
+            else:
+                # Keep the authenticated MCP gateway and /health online so an
+                # absent E2B key is a recoverable configuration issue.
+                class MissingE2B:
+                    @staticmethod
+                    def create(**kwargs):
+                        raise RuntimeError("E2B_API_KEY is missing. Set it in Railway Variables to create a workspace.")
+                    @staticmethod
+                    def connect(sandbox_id):
+                        raise RuntimeError("E2B_API_KEY is missing. Set it in Railway Variables to reconnect.")
+                sandbox_factory=MissingE2B
+                print("[dev-mcp] E2B_API_KEY not configured; gateway is online, workspace tools are unavailable.",flush=True)
         self.sandbox_factory=sandbox_factory
         self.timeout=min(3600,max(120,int(os.getenv('E2B_TIMEOUT_SECONDS','1800'))))
         self.max_command=min(300,max(5,int(os.getenv('MAX_COMMAND_SECONDS','120'))))
