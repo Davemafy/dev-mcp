@@ -41,6 +41,75 @@ def unb64(data: str) -> bytes:
     return base64.urlsafe_b64decode(data + '=' * (-len(data) % 4))
 
 
+def resolve_owner_credentials(db_path: str) -> tuple[str, str]:
+    """Bootstrap single-owner login without crashing the service.
+
+    Explicit Railway variables take precedence. Generated credentials are stored
+    beside the OAuth database when possible; a Railway volume makes them durable.
+    No secret is returned by an unauthenticated HTTP endpoint.
+    """
+    configured_password = os.getenv('OWNER_PASSWORD', '')
+    configured_secret = os.getenv('TOKEN_SIGNING_SECRET', '')
+    password = configured_password if len(configured_password) >= 20 else ''
+    secret = configured_secret if len(configured_secret) >= 32 else ''
+
+    path = Path(db_path).with_name('dev-mcp-bootstrap.json')
+    persisted = {}
+    try:
+        if path.exists():
+            persisted = json.loads(path.read_text(encoding='utf-8'))
+            if not isinstance(persisted, dict):
+                persisted = {}
+    except (OSError, json.JSONDecodeError, ValueError):
+        persisted = {}
+
+    if not password and isinstance(persisted.get('owner_password'), str):
+        password = persisted['owner_password']
+    if not secret and isinstance(persisted.get('signing_secret'), str):
+        secret = persisted['signing_secret']
+    if len(password) < 20:
+        password = secrets.token_urlsafe(32)
+        new_password = True
+    else:
+        new_password = False
+    if len(secret) < 32:
+        secret = secrets.token_urlsafe(48)
+
+    if not configured_password or len(configured_password) < 20 or not configured_secret or len(configured_secret) < 32:
+        # Store only generated credentials, never a password supplied explicitly
+        # through Railway Variables. The file is owner-readable only.
+        data = {
+            'owner_password': password if len(configured_password) < 20 else None,
+            'signing_secret': secret if len(configured_secret) < 32 else None,
+        }
+        try:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            flags = os.O_WRONLY | os.O_CREAT | os.O_TRUNC
+            fd = os.open(path, flags, 0o600)
+            try:
+                os.fchmod(fd, 0o600)
+                with os.fdopen(fd, 'w', encoding='utf-8') as file:
+                    json.dump(data, file)
+            except BaseException:
+                try:
+                    os.close(fd)
+                except OSError:
+                    pass
+                raise
+        except OSError:
+            print('[dev-mcp] WARNING: Bootstrap credentials could not be saved. '
+                  'They will change if this instance restarts.', flush=True)
+
+    if new_password:
+        # Railway deployment logs are owner-visible. Never show this on /health.
+        print('[dev-mcp] Initial owner login password (save privately): ' + password,
+              flush=True)
+        print('[dev-mcp] For stable credentials across deployments, set '
+              'OWNER_PASSWORD / TOKEN_SIGNING_SECRET in Railway Variables, or '
+              'attach a volume for AUTH_DB_PATH.', flush=True)
+    return password, secret
+
+
 @dataclass(frozen=True)
 class Settings:
     base_url: str
@@ -68,11 +137,9 @@ class Settings:
                 'https://YOUR-DOMAIN.up.railway.app (no path or placeholder). '
                 'Alternatively configure a Railway public domain so RAILWAY_PUBLIC_DOMAIN is present.'
             )
-        password = os.getenv('OWNER_PASSWORD', '')
-        secret = os.getenv('TOKEN_SIGNING_SECRET', '')
-        if len(password) < 20 or len(secret) < 32:
-            raise RuntimeError('Set OWNER_PASSWORD (20+ chars) and TOKEN_SIGNING_SECRET (32+ chars)')
-        return cls(base, password, secret, os.getenv('AUTH_DB_PATH', '/tmp/dev-mcp-auth.sqlite'))
+        db_path = os.getenv('AUTH_DB_PATH', '/tmp/dev-mcp-auth.sqlite')
+        password, secret = resolve_owner_credentials(db_path)
+        return cls(base, password, secret, db_path)
 
 
 class OAuth:
