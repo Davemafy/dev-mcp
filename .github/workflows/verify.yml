@@ -40,3 +40,33 @@ jobs:
           assert app is not None
           print("Real FastMCP HTTP app mounted successfully.")
           PY
+      - name: Start the real HTTP server and verify health + OAuth
+        env:
+          PUBLIC_BASE_URL: http://127.0.0.1:8099
+          OWNER_PASSWORD: ci-owner-password-30-characters
+          TOKEN_SIGNING_SECRET: ci-signing-secret-with-at-least-32-characters
+          E2B_API_KEY: ci-dummy-no-e2b-requests
+          PORT: "8099"
+        run: |
+          set -euo pipefail
+          python main.py > /tmp/dev-mcp-startup.log 2>&1 &
+          PID=$!
+          trap 'kill "$PID" 2>/dev/null || true; cat /tmp/dev-mcp-startup.log' EXIT
+          curl --fail --silent --show-error --retry 20 --retry-delay 1 --retry-connrefused http://127.0.0.1:8099/health
+          curl --fail --silent --show-error http://127.0.0.1:8099/.well-known/oauth-authorization-server
+          test "$(curl -s -o /dev/null -w '%{http_code}' -X POST http://127.0.0.1:8099/mcp)" = "401"
+          echo "Real HTTP process, health, OAuth discovery, and unauthorized MCP checks passed."
+
+      - name: Build and smoke-test the Railway Docker image
+        run: |
+          set -euo pipefail
+          docker build --tag dev-mcp:ci .
+          docker run --rm -d --name dev-mcp-ci -p 18099:18099 \
+            -e PUBLIC_BASE_URL=http://127.0.0.1:18099 \
+            -e OWNER_PASSWORD=ci-owner-password-30-characters \
+            -e TOKEN_SIGNING_SECRET=ci-signing-secret-with-at-least-32-characters \
+            -e E2B_API_KEY=ci-dummy-no-e2b-requests \
+            -e PORT=18099 dev-mcp:ci
+          trap 'docker logs dev-mcp-ci; docker stop dev-mcp-ci >/dev/null 2>&1 || true' EXIT
+          curl --fail --silent --show-error --retry 20 --retry-delay 1 --retry-connrefused http://127.0.0.1:18099/health
+          echo "Railway Docker image boots and serves HTTP."
