@@ -252,3 +252,21 @@ def test_complete_gateway_routing_with_fake_fastmcp(monkeypatch,tmp_path):
             names=valid.json()['tools']
             assert 'run_terminal_command' in names and 'read_file' in names and 'workspace_close' in names
     asyncio.run(workflow())
+
+
+def test_railway_public_origin_configuration(monkeypatch,tmp_path):
+    monkeypatch.setenv('OWNER_PASSWORD','p'*30)
+    monkeypatch.setenv('TOKEN_SIGNING_SECRET','s'*42)
+    monkeypatch.setenv('AUTH_DB_PATH',str(tmp_path/'auth.sqlite'))
+    monkeypatch.setenv('PUBLIC_BASE_URL','dev-mcp-production-735c.up.railway.app/')
+    monkeypatch.delenv('RAILWAY_PUBLIC_DOMAIN',raising=False)
+    assert Settings.from_env().base_url == 'https://dev-mcp-production-735c.up.railway.app'
+    monkeypatch.delenv('PUBLIC_BASE_URL',raising=False)
+    monkeypatch.setenv('RAILWAY_PUBLIC_DOMAIN','my-app.up.railway.app')
+    assert Settings.from_env().base_url == 'https://my-app.up.railway.app'
+    monkeypatch.setenv('PUBLIC_BASE_URL','http://attacker.example.com')
+    with pytest.raises(RuntimeError,match='Invalid public URL'):
+        Settings.from_env()
+    monkeypatch.setenv('PUBLIC_BASE_URL','https://my-app.up.railway.app/oauth/secret')
+    with pytest.raises(RuntimeError,match='Invalid public URL'):
+        Settings.from_env()
