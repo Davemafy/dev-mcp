@@ -74,7 +74,14 @@ def build_app(machine_factory=None):
         return machine.preview_url(workspace_id,port)
 
     async def health(request: Request):
-        return JSONResponse({'ready':True,'service':'dev-mcp','machine':'e2b','transport':'streamable-http'})
+        return JSONResponse({
+            'ready': True,
+            'service': 'dev-mcp',
+            'machine': 'e2b',
+            'transport': 'streamable-http',
+            'e2b_configured': machine.e2b_configured,
+            'workspace_available': machine.e2b_configured,
+        })
 
     mcp_app=mcp.http_app()
     # OAuth endpoints must be public; all MCP HTTP requests require access token.
