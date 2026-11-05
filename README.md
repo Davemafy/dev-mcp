@@ -5,11 +5,15 @@ A private cloud development machine exposed through MCP. Railway hosts the Pytho
 ## Deploy to Railway
 
 1. Deploy this repository with the included Dockerfile.
-2. Create an E2B account and set the Railway environment variables described in `.env.example`.
-3. Set `E2B_API_KEY`, `OWNER_PASSWORD` (20+ characters), and `TOKEN_SIGNING_SECRET` (32+ characters) as Railway secrets. Do not commit their actual values.
-4. Generate a Railway domain. `PUBLIC_BASE_URL` can be omitted if Railway supplies `RAILWAY_PUBLIC_DOMAIN`; otherwise set it to the HTTPS origin.
-5. Optional: mount a Railway volume at `/data` and set `AUTH_DB_PATH=/data/dev-mcp-auth.sqlite` for OAuth one-time-code and refresh-token replay state across restarts.
-6. Check `https://YOUR_DOMAIN/health`. MCP is served at `https://YOUR_DOMAIN/mcp` using Streamable HTTP; OAuth discovery is available at `/.well-known/oauth-authorization-server`.
+2. Generate a public Railway domain. `PUBLIC_BASE_URL` can be omitted when Railway supplies `RAILWAY_PUBLIC_DOMAIN`; otherwise set it to your exact HTTPS origin.
+3. Visit `https://YOUR_DOMAIN/health`. **The gateway starts even if no login variables or E2B key have been configured.** It returns `e2b_configured: false` until you configure E2B. Find your **automatically generated owner login password** in the private Railway deployment logs (search for `Initial owner login password`).
+4. To make workspace creation work, add `E2B_API_KEY` as a Railway variable. A valid E2B account is required for actual Linux sandbox execution; don't put the key in a chat.
+5. Optional for stable OAuth login after restarts: set `OWNER_PASSWORD` (20+ characters), `TOKEN_SIGNING_SECRET` (32+ characters), or attach a Railway volume at `/data` and set `AUTH_DB_PATH=/data/dev-mcp-auth.sqlite` so the generated credentials and replay database survive deployment.
+6. MCP is served at `https://YOUR_DOMAIN/mcp` using Streamable HTTP; OAuth discovery is available at `/.well-known/oauth-authorization-server`. Login uses the owner password—not the E2B key.
+
+### If the service starts but E2B doesn't work
+
+`/health` returns HTTP 200 with `e2b_configured: false` when `E2B_API_KEY` is absent. This is intentionally not a crash. The workspace tools return a descriptive error until the key is set. The password can change on Railway restarts if you don't supply explicit credentials or a persistent volume. Never expose your generated login password or sandbox key publicly.
 
 ## Capabilities
 
