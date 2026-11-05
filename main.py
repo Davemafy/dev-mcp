@@ -4,6 +4,7 @@ from __future__ import annotations
 import os
 from auth import Settings, OAuth, BearerGate
 from machine import Machine
+from browser import browser_setup as setup_browser, browser_visit as visit_browser
 
 
 def build_app(machine_factory=None):
@@ -72,6 +73,17 @@ def build_app(machine_factory=None):
     def preview_url(workspace_id: str, port: int=3000) -> dict:
         """Get HTTPS preview URL for a server listening on 0.0.0.0 in the E2B workspace."""
         return machine.preview_url(workspace_id,port)
+
+    @mcp.tool()
+    def browser_setup(workspace_id: str) -> dict:
+        """Install headless Chromium inside this E2B workspace (once per workspace)."""
+        return setup_browser(machine, workspace_id)
+
+    @mcp.tool()
+    def browser_visit(workspace_id: str, url: str, action: str = "inspect",
+                      selector: str = "", value: str = "") -> dict:
+        """Open a web page in E2B Chromium; optionally click/fill CSS selector; return title, text, links, and screenshot path. Run browser_setup first."""
+        return visit_browser(machine, workspace_id, url, action, selector, value)
 
     async def health(request: Request):
         return JSONResponse({
