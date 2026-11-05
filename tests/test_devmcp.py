@@ -270,3 +270,47 @@ def test_railway_public_origin_configuration(monkeypatch,tmp_path):
     monkeypatch.setenv('PUBLIC_BASE_URL','https://my-app.up.railway.app/oauth/secret')
     with pytest.raises(RuntimeError,match='Invalid public URL'):
         Settings.from_env()
+
+
+
+def test_bootstrap_without_owner_secrets(monkeypatch, tmp_path, capsys):
+    monkeypatch.setenv('PUBLIC_BASE_URL','dev-mcp-production-735c.up.railway.app')
+    monkeypatch.setenv('AUTH_DB_PATH',str(tmp_path/'auth.sqlite'))
+    monkeypatch.delenv('OWNER_PASSWORD',raising=False)
+    monkeypatch.delenv('TOKEN_SIGNING_SECRET',raising=False)
+
+    first=Settings.from_env()
+    assert first.base_url=='https://dev-mcp-production-735c.up.railway.app'
+    assert len(first.password)>=20 and len(first.secret)>=32
+    assert 'Initial owner login password' in capsys.readouterr().out
+
+    # A volume-backed bootstrap file keeps the OAuth issuer and signing key
+    # stable across successive server process starts.
+    second=Settings.from_env()
+    assert second.password==first.password
+    assert second.secret==first.secret
+    assert 'Initial owner login password' not in capsys.readouterr().out
+    file=tmp_path/'dev-mcp-bootstrap.json'
+    assert file.exists()
+    assert file.stat().st_mode & 0o077 == 0
+
+    signed=OAuth(first).sign({'typ':'access','aud':first.base_url+'/mcp'},120)
+    assert OAuth(second).verify(signed,'access',first.base_url+'/mcp')['typ']=='access'
+
+
+def test_missing_e2b_key_does_not_crash_gateway(monkeypatch,oauth):
+    monkeypatch.delenv('E2B_API_KEY',raising=False)
+    machine=Machine(oauth)
+    assert not machine.e2b_configured
+    with pytest.raises(RuntimeError,match='E2B_API_KEY is missing'):
+        machine.create()
+
+
+def test_short_optional_secrets_are_replaced_not_fatal(monkeypatch,tmp_path):
+    monkeypatch.setenv('PUBLIC_BASE_URL','https://my-service.up.railway.app')
+    monkeypatch.setenv('AUTH_DB_PATH',str(tmp_path/'auth.sqlite'))
+    monkeypatch.setenv('OWNER_PASSWORD','short')
+    monkeypatch.setenv('TOKEN_SIGNING_SECRET','short')
+    settings=Settings.from_env()
+    assert settings.password!='short' and settings.secret!='short'
+    assert len(settings.password)>=20 and len(settings.secret)>=32
