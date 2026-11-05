@@ -50,14 +50,24 @@ class Settings:
 
     @classmethod
     def from_env(cls) -> 'Settings':
+        # Railway exposes its public hostname on many deployments. A manually
+        # configured PUBLIC_BASE_URL takes precedence; hostname-only values are OK.
+        raw = os.getenv('PUBLIC_BASE_URL', '').strip()
         domain = os.getenv('RAILWAY_PUBLIC_DOMAIN', '').strip()
-        base = os.getenv('PUBLIC_BASE_URL', '').strip() or (f'https://{domain}' if domain else '')
-        if not base or not base.startswith(('https://', 'http://localhost:', 'http://127.0.0.1:')):
-            raise RuntimeError('PUBLIC_BASE_URL must be an HTTPS origin, or loopback for local testing')
+        base = raw or domain
+        if base and '://' not in base:
+            base = 'https://' + base
         base = base.rstrip('/')
         split = urlsplit(base)
-        if split.path or split.query or split.fragment or split.username or split.password:
-            raise RuntimeError('PUBLIC_BASE_URL must be an origin without path/query/credentials')
+        loopback = (split.scheme == 'http' and split.hostname in ('localhost', '127.0.0.1')
+                    and split.port is not None)
+        valid_scheme = split.scheme == 'https' or loopback
+        if not base or not valid_scheme or not split.hostname or split.path or split.query or split.fragment or split.username or split.password:
+            raise RuntimeError(
+                'Invalid public URL. Set PUBLIC_BASE_URL in Railway Variables to '
+                'https://YOUR-DOMAIN.up.railway.app (no path or placeholder). '
+                'Alternatively configure a Railway public domain so RAILWAY_PUBLIC_DOMAIN is present.'
+            )
         password = os.getenv('OWNER_PASSWORD', '')
         secret = os.getenv('TOKEN_SIGNING_SECRET', '')
         if len(password) < 20 or len(secret) < 32:
