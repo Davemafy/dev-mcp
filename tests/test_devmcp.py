@@ -153,6 +153,8 @@ def test_oauth_full_authorize_refresh_replay(oauth):
                'code_challenge':challenge,'code_challenge_method':'S256','state':'s123', 'scope':'dev:run offline_access'}
             page=await client.get('/authorize',params=q)
             assert page.status_code==200
+            assert "form-action 'self' https://chatgpt.com" in page.headers['content-security-policy']
+            assert 'min-height:48px' in page.text
             import re,html
             flow=html.unescape(re.search(r'name=\'request\' value=\'([^\']+)',page.text).group(1))
             fail=await client.post('/authorize',data={'request':flow,'password':'wrong-password'})
