@@ -245,17 +245,20 @@ class OAuth:
             flow = self._authorization_request(dict(request.query_params))
         except (ValueError, KeyError):
             return HTMLResponse('Invalid OAuth authorization request', status_code=400)
+        callback = urlsplit(self.verify(flow, 'auth_request')['redirect_uri'])
+        callback_origin = f'{callback.scheme}://{callback.netloc}'
         page = ("<!doctype html><html lang='en'><meta charset='utf-8'><title>Authorize dev-mcp</title>"
             "<meta name='viewport' content='width=device-width, initial-scale=1'>"
             "<main style='max-width:25rem;margin:12vh auto;font:16px system-ui;padding:1rem'>"
             "<h1>Connect dev-mcp</h1><p>This connection grants terminal and filesystem access to a disposable E2B machine.</p>"
+            "<style>label{display:block} input{display:block;box-sizing:border-box;width:100%;min-height:44px;padding:.6rem;margin:.5rem 0 1rem;font:inherit} button{min-height:48px;padding:.7rem 1.5rem;font:inherit;cursor:pointer}</style>"
             "<form method='post' action='/authorize'>"
             f"<p>Client callback: <code>{html.escape(urlsplit(self.verify(flow, 'auth_request')['redirect_uri']).netloc)}</code></p>"
             f"<input type='hidden' name='request' value='{html.escape(flow,quote=True)}'>"
             "<label>Owner password <input type='password' name='password' required autocomplete='current-password'></label>"
             "<p><button type='submit'>Authorize</button></p></form></main></html>")
         return HTMLResponse(page, headers={'Cache-Control':'no-store',
-            'Content-Security-Policy':"default-src 'none'; style-src 'unsafe-inline'; form-action 'self'"})
+            'Content-Security-Policy':f"default-src 'none'; style-src 'unsafe-inline'; form-action 'self' {callback_origin}"})
 
     async def authorize_submit(self, request: Request):
         ip = request.client.host if request.client else 'unknown'
