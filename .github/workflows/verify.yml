@@ -61,11 +61,10 @@ jobs:
         run: |
           set -euo pipefail
           docker build --tag dev-mcp:ci .
+          # Simulate a new Railway service with NO owner credentials or E2B
+          # key configured. It should serve /health, not crash-loop.
           docker run -d --name dev-mcp-ci -p 18099:18099 \
             -e PUBLIC_BASE_URL=http://127.0.0.1:18099 \
-            -e OWNER_PASSWORD=ci-owner-password-30-characters \
-            -e TOKEN_SIGNING_SECRET=ci-signing-secret-with-at-least-32-characters \
-            -e E2B_API_KEY=ci-dummy-no-e2b-requests \
             -e PORT=18099 dev-mcp:ci
           trap 'docker ps -a --filter name=dev-mcp-ci; docker logs dev-mcp-ci || true; docker rm -f dev-mcp-ci >/dev/null 2>&1 || true' EXIT
           READY=0
@@ -85,4 +84,6 @@ jobs:
             exit 1
           fi
           curl --fail --silent --show-error http://127.0.0.1:18099/.well-known/oauth-authorization-server
-          echo "Railway Docker image boots and serves HTTP."
+          curl --fail --silent --show-error http://127.0.0.1:18099/health | grep -q '"e2b_configured":false'
+          docker logs dev-mcp-ci | grep -q 'Initial owner login password'
+          echo "Railway Docker image boots, provisions OAuth login, and explains missing E2B configuration."
