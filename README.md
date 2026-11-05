@@ -17,7 +17,7 @@ A private cloud development machine exposed through MCP. Railway hosts the Pytho
 
 ## Capabilities
 
-`workspace_create`, `workspace_status`, `workspace_close`, `write_file`, `read_file`, `list_files`, `run_terminal_command`, `start_process`, `list_processes`, `stop_process`, and `preview_url`.
+`workspace_create`, `workspace_status`, `workspace_close`, `write_file`, `read_file`, `list_files`, `run_terminal_command`, `start_process`, `list_processes`, `stop_process`, `preview_url`, `browser_setup`, and `browser_visit`.
 
 Create one workspace, then reuse the returned signed `workspace_id` for every subsequent file and terminal call. E2B sandbox files survive across tool calls until the workspace expires or is closed.
 
@@ -36,3 +36,17 @@ The E2B API key remains in Railway. Do not copy confidential credentials into di
 Depending on your ChatGPT plan and workspace settings, write-enabled custom MCP connection may be unavailable. Test account eligibility before paying for infrastructure.
 
 This repository is standalone; it is not part of Faultline.
+
+## Browser automation (self-extension demo)
+
+Create a workspace, call `browser_setup(workspace_id)` to install Playwright/Chromium
+inside the E2B sandbox, then `browser_visit(workspace_id, "https://example.com")`.
+The browser tool returns rendered text, title, links, status and a screenshot path
+inside the same workspace. You can also use `action="click"` or `action="fill"`
+with a CSS selector; these actions operate on the loaded page.
+
+The browser runs in E2B, **not on Railway**. Browser navigation can reach arbitrary
+sites accessible from that workspace, so treat the tool as privileged and do not
+expose the owner-authenticated gateway to untrusted users. The screenshots remain
+in the E2B machine and are not directly attached to chat. Every new disposable
+workspace requires a new browser installation.
