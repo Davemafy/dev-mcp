@@ -61,12 +61,28 @@ jobs:
         run: |
           set -euo pipefail
           docker build --tag dev-mcp:ci .
-          docker run --rm -d --name dev-mcp-ci -p 18099:18099 \
+          docker run -d --name dev-mcp-ci -p 18099:18099 \
             -e PUBLIC_BASE_URL=http://127.0.0.1:18099 \
             -e OWNER_PASSWORD=ci-owner-password-30-characters \
             -e TOKEN_SIGNING_SECRET=ci-signing-secret-with-at-least-32-characters \
             -e E2B_API_KEY=ci-dummy-no-e2b-requests \
             -e PORT=18099 dev-mcp:ci
-          trap 'docker logs dev-mcp-ci; docker stop dev-mcp-ci >/dev/null 2>&1 || true' EXIT
-          curl --fail --silent --show-error --retry 20 --retry-delay 1 --retry-connrefused http://127.0.0.1:18099/health
+          trap 'docker ps -a --filter name=dev-mcp-ci; docker logs dev-mcp-ci || true; docker rm -f dev-mcp-ci >/dev/null 2>&1 || true' EXIT
+          READY=0
+          for i in $(seq 1 35); do
+            if curl --fail --silent --show-error --max-time 2 http://127.0.0.1:18099/health; then
+              READY=1
+              break
+            fi
+            if [ "$(docker inspect -f '{{.State.Running}}' dev-mcp-ci)" = "false" ]; then
+              echo "Container exited before it became ready."
+              break
+            fi
+            sleep 1
+          done
+          if [ "$READY" != "1" ]; then
+            echo "Docker image never became ready. Container logs follow."
+            exit 1
+          fi
+          curl --fail --silent --show-error http://127.0.0.1:18099/.well-known/oauth-authorization-server
           echo "Railway Docker image boots and serves HTTP."
