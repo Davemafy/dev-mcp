@@ -1,0 +1,92 @@
+name: Refit live Vultr experiment
+
+on:
+  push:
+    branches: [feat/refit-live-inference-probe]
+    paths:
+      - experiments/refit_runs/trigger.json
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: refit-live-experiment
+  cancel-in-progress: false
+
+jobs:
+  live-evaluation:
+    name: Verify Refit with Vultr Serverless Inference
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      PYTHONUNBUFFERED: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Verify offline protocol tests
+        run: python -m unittest discover -s tests -p '*refit*' -v
+
+      - name: Check live-run authorization and credential
+        id: key
+        env:
+          VULTR_INFERENCE_API_KEY: ${{ secrets.VULTR_INFERENCE_API_KEY }}
+        run: |
+          RUN_LIVE=$(python -c 'import json; print(str(json.load(open("experiments/refit_runs/trigger.json")).get("run_live", False)).lower())')
+          if [ "$RUN_LIVE" != "true" ]; then
+            echo "Offline smoke test requested; billable live calls explicitly disabled."
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+          elif [ -z "$VULTR_INFERENCE_API_KEY" ]; then
+            echo "No VULTR_INFERENCE_API_KEY repository secret. Skipping live calls."
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "Inference credential available; live run explicitly enabled."
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Evaluate model migration against real Vultr API
+        if: steps.key.outputs.ready == 'true'
+        env:
+          VULTR_INFERENCE_API_KEY: ${{ secrets.VULTR_INFERENCE_API_KEY }}
+        run: |
+          python -m scripts.refit_stress_probe \
+            --source deepseek-v4.1-flash-1017 \
+            --targets glm-5.2,muse-glimmer-30b,raon-1-mini-preview \
+            --repair glm-5.3-flash \
+            --max-requests 100 \
+            --output /tmp/refit-live-report.json
+
+      - name: Publish non-sensitive result
+        if: always()
+        run: |
+          if test -f /tmp/refit-live-report.json; then
+            python - <<'PY'
+          import json, os
+          with open("/tmp/refit-live-report.json", encoding="utf8") as f:
+              data=json.load(f)
+          report=data["report"]
+          summary={"status":report["status"],"requests":data.get("requests")}
+          if "candidate_models" in report:
+              summary["source"]=report.get("source_training")
+              summary["candidates"]=[{
+                  "model":r.get("model"),
+                  "training":r.get("training"),
+                  "regressions":r.get("regressions_against_source"),
+                  "status":r.get("status"),
+                  "repaired_holdout":r.get("repaired_holdout")
+              } for r in report["candidate_models"]]
+          else:
+              for key in ("source","target_before","target_after","validation","holdout"):
+                  if key in report:
+                      summary[key]={"passed":report[key]["passed"],"total":report[key]["total"]}
+          with open(os.environ["GITHUB_STEP_SUMMARY"],"a",encoding="utf8") as f:
+              f.write("## Refit live inference result\n\n")
+              f.write("    "+json.dumps(summary,sort_keys=True)+"\n")
+          print("RESULT",json.dumps(summary))
+          PY
+          else
+            echo "No live report generated (credential missing, execution failed, or suite skipped)." >> "$GITHUB_STEP_SUMMARY"
+          fi

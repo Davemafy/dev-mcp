@@ -1,0 +1,6 @@
+{
+  "run_live": true,
+  "run_id": "live-multimodel-stress-2026-11-06-01",
+  "purpose": "Real multi-model regression discovery and bounded repair, no fabricated failures",
+  "model_request_budget": 100
+}
