@@ -20,7 +20,6 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 25
     env:
-      VULTR_INFERENCE_API_KEY: ${{ secrets.VULTR_INFERENCE_API_KEY }}
       PYTHONUNBUFFERED: "1"
     steps:
       - uses: actions/checkout@v4
@@ -33,6 +32,8 @@ jobs:
 
       - name: Check live-run authorization and credential
         id: key
+        env:
+          VULTR_INFERENCE_API_KEY: ${{ secrets.VULTR_INFERENCE_API_KEY }}
         run: |
           RUN_LIVE=$(python -c 'import json; print(str(json.load(open("experiments/refit_runs/trigger.json")).get("run_live", False)).lower())')
           if [ "$RUN_LIVE" != "true" ]; then
@@ -48,6 +49,8 @@ jobs:
 
       - name: Evaluate model migration against real Vultr API
         if: steps.key.outputs.ready == 'true'
+        env:
+          VULTR_INFERENCE_API_KEY: ${{ secrets.VULTR_INFERENCE_API_KEY }}
         run: |
           python -m scripts.refit_stress_probe \
             --source deepseek-v4.1-flash-1017 \
