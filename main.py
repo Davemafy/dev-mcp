@@ -26,7 +26,7 @@ def build_app(machine_factory=None):
 
     @mcp.tool()
     def workspace_status(workspace_id: str) -> dict:
-        """Check if an existing E2B workspace remains alive."""
+        """Check an existing workspace; use workspace_id='recover' to discover surviving owner workspaces and obtain fresh signed handles without creating a new machine."""
         return machine.status(workspace_id)
 
     @mcp.tool()
@@ -93,6 +93,8 @@ def build_app(machine_factory=None):
             'transport': 'streamable-http',
             'e2b_configured': machine.e2b_configured,
             'workspace_available': machine.e2b_configured,
+            'workspace_recovery_available': machine.e2b_configured,
+            'workspace_recovery_version': 1,
         })
 
     mcp_app=mcp.http_app()

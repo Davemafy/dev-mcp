@@ -49,7 +49,7 @@ class FakeSandbox:
     items={}
     next_id=0
     @classmethod
-    def create(cls,timeout=1800):
+    def create(cls,timeout=1800,metadata=None):
         cls.next_id+=1
         obj=cls.__new__(cls)
         obj.sandbox_id=f'sandbox-{cls.next_id}'
@@ -57,6 +57,7 @@ class FakeSandbox:
         obj.files=FakeFiles(obj.root)
         obj.commands=FakeCommands(obj.root)
         obj.dead=False
+        obj.metadata=metadata or {}
         cls.items[obj.sandbox_id]=obj
         return obj
     @classmethod
@@ -94,6 +95,12 @@ def test_workspace_is_cryptographically_scoped(machine):
     tampered=sid[:-5] + ('a' if sid[-5]!='a' else 'b') + sid[-4:]
     with pytest.raises(OAuthError): machine.status(tampered)
     assert machine.status(sid)['ready']
+
+
+def test_new_workspaces_are_tagged_for_this_gateway(machine):
+    handle = machine.create()['workspace_id']
+    sid = machine.oauth.verify(handle, 'workspace')['sandbox_id']
+    assert FakeSandbox.items[sid].metadata == {'dev_mcp_issuer': machine.issuer}
 
 
 def test_workspace_closure(machine):

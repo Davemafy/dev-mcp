@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import os
+import hashlib
 from pathlib import PurePosixPath
 from typing import Callable
 from auth import OAuth, OAuthError
@@ -25,6 +26,7 @@ def checked_path(value: str) -> str:
 class Machine:
     def __init__(self, oauth: OAuth, sandbox_factory: Callable | None = None):
         self.oauth=oauth
+        self.issuer = hashlib.sha256(oauth.cfg.base_url.encode()).hexdigest()[:24]
         self.e2b_configured = bool(os.getenv("E2B_API_KEY")) or sandbox_factory is not None
         if sandbox_factory is None:
             if os.getenv("E2B_API_KEY"):
@@ -48,7 +50,8 @@ class Machine:
         self.output_limit=min(100000,max(1000,int(os.getenv('MAX_OUTPUT_CHARS','30000'))))
 
     def create(self):
-        sandbox=self.sandbox_factory.create(timeout=self.timeout)
+        sandbox=self.sandbox_factory.create(timeout=self.timeout,
+            metadata={'dev_mcp_issuer': self.issuer})
         sid=str(sandbox.sandbox_id)
         return {'workspace_id': self.oauth.sign({'typ':'workspace','sandbox_id':sid},86400),
                 'timeout_seconds':self.timeout,'home':HOME}
@@ -61,8 +64,53 @@ class Machine:
         return sandbox
 
     def status(self,workspace_id: str):
+        if workspace_id == 'recover':
+            return self.recover()
         s=self.connect(workspace_id)
         return {'ready':True,'sandbox_id':s.sandbox_id,'home':HOME}
+
+    def recover(self):
+        """Read the configured owner's E2B project inventory; never create/resume.
+
+        Excludes workspaces tagged for a different dev-mcp installation. Older
+        untagged project workspaces are explicit legacy candidates, not silently
+        selected. This operation is behind the same single-owner OAuth gate as
+        every terminal operation. Handles remain signed and issuer-bound.
+        """
+        if not self.e2b_configured:
+            raise RuntimeError('E2B_API_KEY is missing; workspace recovery is unavailable.')
+        listing = getattr(self.sandbox_factory, 'list', None)
+        if not callable(listing):
+            raise RuntimeError('Installed E2B SDK does not provide workspace discovery.')
+        from e2b import SandboxQuery, SandboxState
+        pages = listing(query=SandboxQuery(state=[SandboxState.RUNNING, SandboxState.PAUSED]),
+                        limit=100, request_timeout=10, retries=0)
+        workspaces = []
+        seen = set()
+        # Bounded management-plane query; this is not a reconnect heartbeat.
+        for _ in range(2):
+            if not pages.has_next:
+                break
+            for item in pages.next_items():
+                sid = str(item.sandbox_id)
+                state = getattr(item.state, 'value', item.state)
+                metadata = item.metadata or {}
+                tag = metadata.get('dev_mcp_issuer')
+                if state not in ('running', 'paused') or tag not in (None, self.issuer) or sid in seen:
+                    continue
+                seen.add(sid)
+                started = getattr(item, 'started_at', None)
+                workspaces.append({
+                    'sandbox_id': sid, 'state': state,
+                    'started_at': started.isoformat() if hasattr(started, 'isoformat') else None,
+                    'legacy_untagged': tag is None,
+                    'workspace_id': self.oauth.sign({'typ':'workspace','sandbox_id':sid},86400),
+                })
+        workspaces.sort(key=lambda x: (x['legacy_untagged'], x['started_at'] or ''))
+        return {'ready': True, 'recovery_available': True, 'workspaces': workspaces,
+                'truncated': bool(pages.has_next), 'created_workspace': False,
+                'message': ('Choose a returned signed workspace_id to reconnect. '
+                            'Expired or deleted sandbox files cannot be restored by discovery.')}
 
     def close(self,workspace_id: str):
         self.connect(workspace_id).kill()

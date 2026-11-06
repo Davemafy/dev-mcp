@@ -21,6 +21,27 @@ A private cloud development machine exposed through MCP. Railway hosts the Pytho
 
 Create one workspace, then reuse the returned signed `workspace_id` for every subsequent file and terminal call. E2B sandbox files survive across tool calls until the workspace expires or is closed.
 
+### Recover an existing workspace after losing its handle
+
+Call the existing `workspace_status` tool with `workspace_id: "recover"`.
+The authenticated owner receives a bounded inventory of surviving running or
+paused workspaces from the configured E2B project, with fresh signed handles.
+Select one of those handles for the normal status, file and terminal tools.
+This discovery operation does not create, resume or execute anything in a
+workspace. Paused machines resume only when explicitly reconnected.
+
+New workspaces carry an installation tag; recovery excludes machines tagged
+for another dev-mcp installation. Untagged machines created by older versions
+are shown explicitly as legacy project candidates. Arbitrary E2B IDs and the
+`recover` keyword cannot authorize terminal access or deletion: those operations
+still require a valid signed handle. The inventory is available only behind
+the same single-owner OAuth gate, never from public `/health`.
+
+Recovery cannot restore the files of an expired or deleted sandbox. It returns
+an empty inventory when none survive and never replaces a missing machine with
+a fresh empty one. `/health` includes `workspace_recovery_version: 1` after this
+feature is deployed. Existing tool clients do not need a new tool schema.
+
 The gateway uses single-owner OAuth with authorization code, PKCE, signed bearer tokens, dynamic client registration, and an owner-password approval page. Do not select anonymous/no-auth access for terminal tools.
 
 ## Test
