@@ -1,0 +1,75 @@
+name: Refit live Vultr experiment
+
+on:
+  push:
+    branches: [feat/refit-live-inference-probe]
+    paths:
+      - experiments/refit_runs/trigger.json
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: refit-live-experiment
+  cancel-in-progress: false
+
+jobs:
+  live-evaluation:
+    name: Verify Refit with Vultr Serverless Inference
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      VULTR_INFERENCE_API_KEY: ${{ secrets.VULTR_INFERENCE_API_KEY }}
+      PYTHONUNBUFFERED: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Verify offline protocol tests
+        run: python -m unittest discover -s tests -p '*refit*' -v
+
+      - name: Check inference credential
+        id: key
+        run: |
+          if [ -z "$VULTR_INFERENCE_API_KEY" ]; then
+            echo "No VULTR_INFERENCE_API_KEY repository secret. Skipping billable live calls."
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "Inference credential available to the workflow."
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Evaluate model migration against real Vultr API
+        if: steps.key.outputs.ready == 'true'
+        run: |
+          python scripts/refit_vultr_probe.py \
+            --source deepseek-v4.1-flash-1017 \
+            --target glm-5.2 \
+            --repair glm-5.3-flash \
+            --max-requests 70 \
+            --output /tmp/refit-live-report.json
+
+      - name: Publish non-sensitive result
+        if: always()
+        run: |
+          if test -f /tmp/refit-live-report.json; then
+            python - <<'PY'
+          import json, os
+          with open("/tmp/refit-live-report.json", encoding="utf8") as f:
+              data=json.load(f)
+          report=data["report"]
+          summary={"status":report["status"]}
+          for key in ("source","target_before","target_after","validation","holdout"):
+              if key in report:
+                  summary[key]={"passed":report[key]["passed"],"total":report[key]["total"]}
+          with open(os.environ["GITHUB_STEP_SUMMARY"],"a",encoding="utf8") as f:
+              f.write("## Refit live inference result\n\n")
+              f.write("    "+json.dumps(summary,sort_keys=True)+"\n")
+          print("RESULT",json.dumps(summary))
+          PY
+          else
+            echo "No live report generated (credential missing, execution failed, or suite skipped)." >> "$GITHUB_STEP_SUMMARY"
+          fi
