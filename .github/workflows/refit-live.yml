@@ -31,14 +31,18 @@ jobs:
       - name: Verify offline protocol tests
         run: python -m unittest discover -s tests -p '*refit*' -v
 
-      - name: Check inference credential
+      - name: Check live-run authorization and credential
         id: key
         run: |
-          if [ -z "$VULTR_INFERENCE_API_KEY" ]; then
-            echo "No VULTR_INFERENCE_API_KEY repository secret. Skipping billable live calls."
+          RUN_LIVE=$(python -c 'import json; print(str(json.load(open("experiments/refit_runs/trigger.json")).get("run_live", False)).lower())')
+          if [ "$RUN_LIVE" != "true" ]; then
+            echo "Offline smoke test requested; billable live calls explicitly disabled."
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+          elif [ -z "$VULTR_INFERENCE_API_KEY" ]; then
+            echo "No VULTR_INFERENCE_API_KEY repository secret. Skipping live calls."
             echo "ready=false" >> "$GITHUB_OUTPUT"
           else
-            echo "Inference credential available to the workflow."
+            echo "Inference credential available; live run explicitly enabled."
             echo "ready=true" >> "$GITHUB_OUTPUT"
           fi
 
