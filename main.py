@@ -8,6 +8,7 @@ from browser import browser_setup as setup_browser, browser_visit as visit_brows
 from browser_journey import browser_journey as run_browser_journey
 from railway_diagnostics import RailwayInspector
 from stream_browser import BrowserStream
+from browser_proxy import proxy_browser
 
 
 def build_app(machine_factory=None):
@@ -138,6 +139,9 @@ def build_app(machine_factory=None):
         """Read sanitized build/runtime logs for a verified deployment of that configured Railway service."""
         return railway.logs(deployment_id, kind, limit)
 
+    async def browser_view(request: Request):
+        return await proxy_browser(request, machine, oauth)
+
     async def health(request: Request):
         return JSONResponse({
             'ready': True,
@@ -154,6 +158,8 @@ def build_app(machine_factory=None):
     mcp_app=mcp.http_app()
     # OAuth endpoints must be public; all MCP HTTP requests require access token.
     return Starlette(routes=[Route('/health',health),*oauth.routes(),
+        Route('/browser/{session}/',browser_view,methods=['GET','POST']),
+        Route('/browser/{session}/{path:path}',browser_view,methods=['GET','POST']),
         Mount('/',app=BearerGate(mcp_app,oauth))],lifespan=mcp_app.lifespan)
 
 
