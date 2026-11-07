@@ -99,11 +99,11 @@ jobs:
           done
           grep -q '"host_access_configured":true' /tmp/dev-mcp-volume-health.json
           grep -q '"host_access_volume_mounted":true' /tmp/dev-mcp-volume-health.json
-          docker exec dev-mcp-volume-ci python -c             "import os; from pathlib import Path; assert os.geteuid()==10001; Path('/data/restart-check').write_text('persisted')"
+          docker exec -u 10001:10001 dev-mcp-volume-ci python -c             "from pathlib import Path; assert Path('/proc/1/status').read_text().split('Uid:')[1].split()[0]=='10001'; Path('/data/restart-check').write_text('persisted')"
           docker restart dev-mcp-volume-ci
           for attempt in $(seq 1 35); do
             if curl -fsS --max-time 2 http://127.0.0.1:18100/health > /dev/null; then break; fi
             sleep 1
           done
-          docker exec dev-mcp-volume-ci python -c             "import os; from pathlib import Path; assert os.geteuid()==10001; assert Path('/data/restart-check').read_text()=='persisted'"
+          docker exec -u 10001:10001 dev-mcp-volume-ci python -c             "from pathlib import Path; assert Path('/proc/1/status').read_text().split('Uid:')[1].split()[0]=='10001'; assert Path('/data/restart-check').read_text()=='persisted'"
           echo "Persistent Railway volume accessible after restart under non-root application UID."
