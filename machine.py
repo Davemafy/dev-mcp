@@ -2,6 +2,8 @@
 from __future__ import annotations
 
 import os
+import base64
+import shlex
 import hashlib
 from pathlib import PurePosixPath
 from typing import Callable
@@ -175,6 +177,35 @@ class Machine:
     def stop_process(self,workspace_id: str,pid: int):
         self.connect(workspace_id).commands.kill(int(pid))
         return {'stopped':True,'pid':int(pid)}
+
+    def read_capture(self, workspace_id: str):
+        """Read only the fixed browser screenshot; never an arbitrary sandbox file."""
+        code = (
+            "from pathlib import Path;import base64;"
+            "p=Path('/home/user/browser-captures/latest.jpg');"
+            "d=p.read_bytes();"
+            "assert len(d)<=750000,'Capture too large';"
+            "print(base64.b64encode(d).decode())"
+        )
+        sandbox = self.connect(workspace_id)
+        try:
+            result = sandbox.commands.run(
+                "python -c " + shlex.quote(code), timeout=20, cwd=HOME
+            )
+        except Exception:
+            raise RuntimeError("Browser capture unavailable.") from None
+        if getattr(result, 'exit_code', 1) != 0:
+            raise RuntimeError("Browser screenshot not created; run browser_journey first.")
+        encoded = str(result.stdout or "").strip()
+        if len(encoded)>1_100_000:
+            raise ValueError("Browser screenshot exceeded output limit.")
+        try:
+            raw = base64.b64decode(encoded, validate=True)
+        except Exception:
+            raise ValueError("Browser screenshot was not valid image data.") from None
+        if len(raw)>750000 or not raw.startswith(b'\xff\xd8'):
+            raise ValueError("Invalid or excessive JPEG capture.")
+        return raw
 
     def preview_url(self,workspace_id: str,port: int):
         port=int(port)
