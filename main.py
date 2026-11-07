@@ -7,6 +7,7 @@ from machine import Machine
 from browser import browser_setup as setup_browser, browser_visit as visit_browser
 from browser_journey import browser_journey as run_browser_journey
 from railway_diagnostics import RailwayInspector
+from stream_browser import BrowserStream
 
 
 def build_app(machine_factory=None):
@@ -20,6 +21,7 @@ def build_app(machine_factory=None):
     oauth=OAuth(settings)
     machine=Machine(oauth,sandbox_factory=machine_factory)
     railway=RailwayInspector()
+    streaming=BrowserStream(machine)
     mcp=FastMCP('dev-mcp · E2B cloud machine')
 
     @mcp.tool()
@@ -100,6 +102,30 @@ def build_app(machine_factory=None):
         """Return the last browser screenshot as an actual image from this signed E2B workspace."""
         from fastmcp.utilities.types import Image
         return Image(data=machine.read_capture(workspace_id), format="jpeg")
+
+    @mcp.tool()
+    def browser_stream_start(workspace_id: str, url: str = "https://example.com",
+                             viewport: str = "desktop") -> dict:
+        """Start or reconnect a private live browser in a signed E2B workspace."""
+        return streaming.start(workspace_id, url, viewport)
+
+    @mcp.tool()
+    def browser_stream_action(workspace_id: str, action: str,
+                              selector: str = "", value: str = "",
+                              x: float | None = None, y: float | None = None,
+                              dy: float | None = None) -> dict:
+        """Control the active browser page using selectors, keyboard or coordinates."""
+        return streaming.action(workspace_id, action, selector, value, x, y, dy)
+
+    @mcp.tool()
+    def browser_stream_status(workspace_id: str) -> dict:
+        """Read browser state, page title, viewport and non-sensitive errors."""
+        return streaming.status(workspace_id)
+
+    @mcp.tool()
+    def browser_stream_stop(workspace_id: str) -> dict:
+        """Stop the active browser process and revoke its preview session."""
+        return streaming.stop(workspace_id)
 
     @mcp.tool()
     def railway_deployments(limit: int = 10) -> dict:
