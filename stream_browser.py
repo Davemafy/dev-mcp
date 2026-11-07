@@ -64,12 +64,14 @@ class BrowserStream:
         return self.machine.oauth.cfg.base_url.rstrip("/") + "/browser/" + ticket + "/#key=" + token
 
     def start(self, workspace_id: str, url: str = "https://example.com",
-              viewport: str = "desktop") -> dict:
+              viewport: str = "desktop", headful: bool = False) -> dict:
         validate_browser_input(url, "inspect", "", "")
         if viewport not in ("desktop", "mobile"):
             raise ValueError("Viewport must be desktop or mobile.")
         config = self._read_config(workspace_id)
         if config and config.get("token") and self._local(workspace_id).get("ready"):
+            if bool(config.get("headful", False)) != headful:
+                return {"ready": False, "error": "Stop the existing browser before changing desktop mode."}
             return {"ready": True, "reused": True, "viewport": config["viewport"],
                     "view_url": self._view(workspace_id, config["token"]),
                     "message": "Existing shared browser retained; use browser_stream_action to interact."}
@@ -78,16 +80,19 @@ class BrowserStream:
         if installed.get("exit_code") != 0:
             return {"ready": False, "error": "Playwright missing in E2B. Call browser_setup first."}
 
-        # Upload gateway-reviewed server source into the sandbox.
+        # Create the private workspace directory before uploading files.
+        self.machine.run(workspace_id, "mkdir -p " + SESSION_DIR + " && chmod 700 " + SESSION_DIR, timeout_seconds=10)
         self.machine.write(workspace_id, SERVER, Path(__file__).with_name("stream_browser_server.py").read_text())
         self.machine.write(workspace_id, CONTROL, Path(__file__).with_name("stream_browser_control.py").read_text())
-        config = {"token": secrets.token_urlsafe(36), "url": url, "viewport": viewport, "port": PORT}
+        config = {"token": secrets.token_urlsafe(36), "url": url, "viewport": viewport, "port": PORT, "headful": headful}
         self.machine.write(workspace_id, CONFIG, json.dumps(config))
         self.machine.run(workspace_id, "chmod 600 " + CONFIG)
-        launched = self.machine.start_process(
-            workspace_id, "python3 " + SERVER + " --config " + CONFIG +
+        launch_command = (
+            ("DISPLAY=:99 DEVMCP_HEADFUL=1 " if headful else "") +
+            "python3 " + SERVER + " --config " + CONFIG +
             " > " + SESSION_DIR + "/runtime.log 2>&1"
         )
+        launched = self.machine.start_process(workspace_id, launch_command)
         # Capture PID in the private file for owner-initiated teardown.
         if launched.get("pid") is not None:
             config["pid"] = int(launched["pid"])
