@@ -4,6 +4,7 @@ from __future__ import annotations
 import os
 from auth import Settings, OAuth, BearerGate
 from machine import Machine
+from host_access import HostAccess
 from browser import browser_setup as setup_browser, browser_visit as visit_browser
 
 
@@ -17,6 +18,7 @@ def build_app(machine_factory=None):
     settings=Settings.from_env()
     oauth=OAuth(settings)
     machine=Machine(oauth,sandbox_factory=machine_factory)
+    host_access=HostAccess.from_env()
     mcp=FastMCP('dev-mcp · E2B cloud machine')
 
     @mcp.tool()
@@ -75,6 +77,22 @@ def build_app(machine_factory=None):
         return machine.preview_url(workspace_id,port)
 
     @mcp.tool()
+    def host_access_prepare(expected_fingerprint: str) -> dict:
+        """Pin a fingerprint independently checked on Vultr, create a persistent SSH identity,
+        and return a public-key authorization command. No private key is returned."""
+        return host_access.prepare(expected_fingerprint)
+
+    @mcp.tool()
+    def host_access_status() -> dict:
+        """Read status from the single pinned Refit VM. No workspace or remote shell required."""
+        return host_access.status()
+
+    @mcp.tool()
+    def host_access_deploy(revision: str) -> dict:
+        """Deploy a 40-character Git SHA through the server-side restricted forced command."""
+        return host_access.deploy(revision)
+
+    @mcp.tool()
     def browser_setup(workspace_id: str) -> dict:
         """Install headless Chromium inside this E2B workspace (once per workspace)."""
         return setup_browser(machine, workspace_id)
@@ -95,6 +113,8 @@ def build_app(machine_factory=None):
             'workspace_available': machine.e2b_configured,
             'workspace_recovery_available': machine.e2b_configured,
             'workspace_recovery_version': 1,
+            'host_access_version': 1,
+            'host_access_configured': host_access.configured(),
         })
 
     mcp_app=mcp.http_app()

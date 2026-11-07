@@ -71,3 +71,54 @@ sites accessible from that workspace, so treat the tool as privileged and do not
 expose the owner-authenticated gateway to untrusted users. The screenshots remain
 in the E2B machine and are not directly attached to chat. Every new disposable
 workspace requires a new browser installation.
+
+
+## Persistent, restricted SSH access to Refit's Vultr VM
+
+The gateway now includes three **owner-authenticated** MCP tools:
+\`host_access_prepare(expected_fingerprint)\`, \`host_access_status()\`,
+and \`host_access_deploy(revision)\`. Unlike \`run_terminal_command\`, these
+operate through the Railway gateway, not a disposable E2B workspace.
+The connector is disabled unless a **real persistent Railway volume** is
+mounted at \`/data\` and the Railway variable
+\`HOST_SSH_STATE_DIR=/data/refit-host-ssh\` is set. The directory must
+remain on the volume across Railway deployments. Without that configuration,
+the tools fail closed rather than quietly generate ephemeral credentials.
+
+**Security:** the host is fixed at \`80.240.30.92\`, user \`root\`, port 22.
+The first call requires the server's **independently verified** Ed25519 SHA256
+fingerprint from the trusted Vultr console:
+\`ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub\`.
+The connector probes the remote SSH host and refuses mismatches. It generates
+an Ed25519 *client* private key under the Railway volume with owner-only
+permissions; it never returns or logs that private key. The returned public
+key is safe to paste in Vultr's console.
+
+Use the generated \`host_setup\` instruction on the Vultr VM. It pulls the
+verified Refit repository checkout and runs
+\`deploy/setup-devmcp-host-access.sh\` with the **public** key. The helper
+installs a root-owned SSH forced-command handler and appends a
+\`restrict,expiry-time=...,command=...\` authorization lasting five hours.
+It replaces only the dev-MCP authorization, preserving other SSH keys and
+current Refit service budgets. There is no general-purpose SSH shell,
+port forwarding, arbitrary SSH hostname, private-key upload or arbitrary
+remote command parameter.
+
+After installing the public key, invoke \`host_access_status()\` to verify
+authentication and start the gateway's conservative local five-hour timer.
+\`host_access_deploy(revision)\` accepts only a lowercase, full 40-character
+Git commit SHA; the host additionally checks \`origin/main\`, clean
+tracked files, gVisor readiness, deploys and external HTTPS revision
+acceptance. On expiration call \`host_access_prepare\` again with the same
+host fingerprint and re-run the printed public-key authorization command.
+The *same* persisted client private key is reused; no new secret needs
+copying. This five-hour authorization cannot renew itself remotely.
+
+**Limitations:** pushing this repository does not prove Railway's deployment,
+persistent volume or outbound SSH works. Confirm \`/health\` reports
+\`host_access_version: 1\` and \`host_access_configured: true\`, then verify
+\`host_access_status()\` against the live VM before claiming access.
+The trusted host fingerprint must come from Vultr, not merely a network
+scan of the host being connected to. The Railway volume holds a
+high-value restricted SSH credential; protect owner OAuth credentials,
+Railway access and the volume. Do not expose this connector to other users.

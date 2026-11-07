@@ -2,3 +2,5 @@ fastmcp>=4,<5
 e2b>=2.12,<3
 starlette>=1.0.1,<2
 uvicorn>=0.32,<1
+paramiko>=3.5,<5
+cryptography>=43,<47

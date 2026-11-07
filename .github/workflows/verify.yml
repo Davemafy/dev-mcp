@@ -24,7 +24,7 @@ jobs:
           python -m pip install --upgrade pip
           python -m pip install -r requirements.txt pytest httpx
       - name: Compile Python modules
-        run: python -m compileall -q main.py auth.py machine.py browser.py tests/
+        run: python -m compileall -q main.py auth.py machine.py browser.py host_access.py tests/
       - name: Run local unit and protocol simulations
         run: pytest -q
       - name: Instantiate actual FastMCP HTTP application

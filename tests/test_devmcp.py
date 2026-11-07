@@ -260,6 +260,9 @@ def test_complete_gateway_routing_with_fake_fastmcp(monkeypatch,tmp_path):
             assert valid.status_code==200
             names=valid.json()['tools']
             assert 'run_terminal_command' in names and 'read_file' in names and 'workspace_close' in names
+            assert {'host_access_prepare', 'host_access_status', 'host_access_deploy'} <= set(names)
+            assert health.json()['host_access_version'] == 1
+            assert health.json()['host_access_configured'] is False
     asyncio.run(workflow())
 
 
