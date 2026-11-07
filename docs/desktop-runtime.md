@@ -74,9 +74,9 @@ unrestricted E2B terminal commands.
 - Limit workspace lifetime, concurrent viewers, action rate and E2B costs.
 - A real desktop is provided by VNC. Actual frame rate depends on machine,
   viewport, network and encoding; **no fixed frame rate has been measured**.
-- ChatGPT MCP Apps UI is a separate presentation integration. The external
-  viewer works as a standalone webpage once its Railway gateway route is
-  deployed. Embedded iframe use requires CSP/permission verification and
+- ChatGPT MCP Apps UI is a separate presentation integration. The branch now includes an optional `ui://devmcp/desktop-viewer-v1.html` MCP
+  Apps resource and `desktop_viewer` tool. The external viewer works as a
+  standalone webpage once the Railway gateway is deployed. Embedded iframe use requires CSP/permission verification and
   may be subject to additional ChatGPT plugin review.
 
 ## Verification receipts (November 7, 2026)
@@ -96,3 +96,7 @@ unrestricted E2B terminal commands.
   been deployed and accepted through a real external viewer session.
 - Local full test suite: run `python -m pytest -q`; the final count must
   be reported from a fresh run at the committed SHA.
+
+### Optional MCP Apps presentation
+
+FastMCP registers `desktop_viewer` with `ui.resourceUri` and publishes the HTML UI resource with a gateway-only `frameDomains` CSP. The widget requires an explicit click before loading the nested noVNC iframe, offers an external viewer link, and does not persist viewer tokens in browser storage. It is server-side tested but **has not been accepted in a real ChatGPT plugin UI**; nested iframe permissions and host review may prevent embedded display. The desktop tools remain usable independently.
