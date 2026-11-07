@@ -23,12 +23,18 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import urlsplit
 
+from progress_guard import NoProgressCircuit, MUTATING, MAX_NO_PROGRESS, page_fingerprint
+
 PORT = 3487
 CAPTURE = Path("/home/user/browser-captures/latest.jpg")
 ACTIONS = {"navigate", "back", "forward", "reload", "click", "fill",
            "press", "keypress", "type", "scroll", "click_at", "wait_for",
            "assert_text", "inspect_dom"}
 MAX_BODY = 3000
+
+
+class NoProgressBlocked(RuntimeError):
+    """A deterministic circuit-breaker rejection; never execute the action."""
 
 
 def safe_url(value: str) -> str:
@@ -90,6 +96,7 @@ class BrowserState:
     url: str = ""
     frame: bytes = b""
     frame_version: int = 0
+    guard: NoProgressCircuit = field(default_factory=NoProgressCircuit, repr=False)
     viewers: int = 0
     errors: list[str] = field(default_factory=list)
     lock: threading.Lock = field(default_factory=threading.Lock, repr=False)
@@ -164,11 +171,24 @@ def browser_worker(state: BrowserState):
                         item = None
                     if item is not None:
                         payload, result, done = item
+                        before = None
+                        attempted = False
                         try:
                             action = payload["action"]
                             selector = payload.get("selector", "")
                             value = payload.get("value", "")
                             locator = page.locator(selector).first if selector else None
+                            if action in MUTATING:
+                                before = page_fingerprint(page)
+                                if not state.guard.can_run(payload, before):
+                                    result.update({
+                                        "ok": False, "action": action,
+                                        "error": "no-progress-loop",
+                                        "limit": MAX_NO_PROGRESS,
+                                        "message": "Repeated action without observable page progress. Inspect the DOM or stop.",
+                                    })
+                                    raise NoProgressBlocked()
+                                attempted = True
                             if action == "navigate":
                                 page.goto(value, wait_until="domcontentloaded", timeout=18000)
                             elif action == "back":
@@ -210,9 +230,19 @@ def browser_worker(state: BrowserState):
                                 result["visible_text"] = page.locator("body").inner_text(timeout=3500)[:1500]
                             result.update({"ok": True, "action": action, "url": page.url,
                                            "title": page.title()[:200]})
+                        except NoProgressBlocked:
+                            pass  # Detailed, bounded error already attached to result.
                         except Exception as e:
                             result.update({"ok": False, "action": payload["action"],
                                            "error": type(e).__name__})
+                        finally:
+                            if attempted and before is not None:
+                                try:
+                                    page.wait_for_timeout(150)
+                                    state.guard.record(payload, before, page_fingerprint(page))
+                                except Exception:
+                                    # A failed observation must never grant execution privileges.
+                                    state.guard.record(payload, before, before)
                     # Idle headless Chromium should not continuously re-render a
                     # static page on the smallest E2B machine. Active viewers
                     # get roughly one new frame per second; actions capture now.
