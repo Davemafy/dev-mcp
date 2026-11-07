@@ -11,6 +11,8 @@ import hashlib
 import hmac
 import json
 import os
+import subprocess
+import urllib.request
 import queue
 import re
 import threading
@@ -24,7 +26,8 @@ from urllib.parse import urlsplit
 PORT = 3487
 CAPTURE = Path("/home/user/browser-captures/latest.jpg")
 ACTIONS = {"navigate", "back", "forward", "reload", "click", "fill",
-           "press", "keypress", "type", "scroll", "click_at", "wait_for", "assert_text"}
+           "press", "keypress", "type", "scroll", "click_at", "wait_for",
+           "assert_text", "inspect_dom"}
 MAX_BODY = 3000
 
 
@@ -102,14 +105,52 @@ def browser_worker(state: BrowserState):
         from playwright.sync_api import sync_playwright
         CAPTURE.parent.mkdir(parents=True, exist_ok=True)
         with sync_playwright() as p:
-            browser = p.chromium.launch(headless=True, args=["--no-sandbox"])
-            context = browser.new_context(
-                viewport={"width": state.viewport[0], "height": state.viewport[1]},
-                device_scale_factor=1,
-                has_touch=state.viewport_mode == "mobile",
-                is_mobile=state.viewport_mode == "mobile",
-            )
-            page = context.new_page()
+            headful = os.getenv("DEVMCP_HEADFUL") == "1"
+            chrome_process = None
+            if headful:
+                # A single visible Chromium runs on the X11 desktop. External
+                # agent code in this E2B workspace can attach via loopback CDP
+                # to this SAME page, without starting another browser.
+                executable = p.chromium.executable_path
+                chrome_process = subprocess.Popen(
+                    [executable, "--no-sandbox", "--disable-dev-shm-usage",
+                     "--no-first-run", "--disable-sync",
+                     "--remote-debugging-address=127.0.0.1",
+                     "--remote-debugging-port=9222",
+                     "--user-data-dir=/home/user/.devmcp-chrome-profile",
+                     "--window-size=1260,820",
+                     state.initial_url],
+                    env=dict(os.environ, DISPLAY=":99"),
+                    stdin=subprocess.DEVNULL,
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                )
+                for _ in range(45):
+                    if chrome_process.poll() is not None:
+                        break
+                    try:
+                        with urllib.request.urlopen(
+                            "http://127.0.0.1:9222/json/version", timeout=1
+                        ) as response:
+                            if response.status == 200:
+                                break
+                    except OSError:
+                        time.sleep(.3)
+                browser = p.chromium.connect_over_cdp("http://127.0.0.1:9222")
+                context = browser.contexts[0]
+                page = context.pages[0] if context.pages else context.new_page()
+            else:
+                browser = p.chromium.launch(
+                    headless=True,
+                    args=["--no-sandbox", "--disable-dev-shm-usage"],
+                )
+                context = browser.new_context(
+                    viewport={"width": state.viewport[0], "height": state.viewport[1]},
+                    device_scale_factor=1,
+                    has_touch=state.viewport_mode == "mobile",
+                    is_mobile=state.viewport_mode == "mobile",
+                )
+                page = context.new_page()
             page.on("pageerror", lambda e: state.errors.append(type(e).__name__))
             try:
                 page.goto(state.initial_url, wait_until="domcontentloaded", timeout=22000)
@@ -155,6 +196,18 @@ def browser_worker(state: BrowserState):
                                 page.mouse.wheel(0, payload["dy"])
                             elif action == "click_at":
                                 page.mouse.click(payload["x"], payload["y"])
+                            elif action == "inspect_dom":
+                                result["elements"] = page.locator(
+                                    "a, button, input, textarea, select, [role=button]"
+                                ).evaluate_all("""els => els.slice(0, 60).map(el => ({
+                                    tag: el.tagName.toLowerCase(),
+                                    role: el.getAttribute('role') || '',
+                                    name: (el.getAttribute('aria-label') ||
+                                      el.innerText || el.value || '').slice(0, 110),
+                                    id: (el.id || '').slice(0, 100),
+                                    testId: (el.getAttribute('data-testid') || '').slice(0, 100)
+                                }))""")
+                                result["visible_text"] = page.locator("body").inner_text(timeout=3500)[:1500]
                             result.update({"ok": True, "action": action, "url": page.url,
                                            "title": page.title()[:200]})
                         except Exception as e:
@@ -171,16 +224,29 @@ def browser_worker(state: BrowserState):
                         continue
                     last_capture = now
                     try:
-                        jpeg = page.screenshot(type="jpeg", quality=55,
-                                               full_page=False, timeout=4500)
+                        if headful:
+                            # Screenshot the actual X11 framebuffer, so the agent
+                            # inspects the same desktop as the human VNC viewer.
+                            capture = subprocess.run(
+                                ["scrot", "-q", "50", str(CAPTURE)],
+                                env=dict(os.environ, DISPLAY=":99"),
+                                stdout=subprocess.DEVNULL,
+                                stderr=subprocess.DEVNULL,
+                                timeout=4, check=True,
+                            )
+                            jpeg = CAPTURE.read_bytes()
+                        else:
+                            jpeg = page.screenshot(type="jpeg", quality=55,
+                                                   full_page=False, timeout=4500)
                         with state.lock:
                             state.frame = jpeg
                             state.frame_version += 1
                             state.url = page.url[:2000]
                             state.title = page.title()[:200]
-                        tmp = CAPTURE.with_suffix(".new")
-                        tmp.write_bytes(jpeg)
-                        os.replace(tmp, CAPTURE)
+                        if not headful:
+                            tmp = CAPTURE.with_suffix(".new")
+                            tmp.write_bytes(jpeg)
+                            os.replace(tmp, CAPTURE)
                     except Exception as error:
                         with state.lock:
                             state.errors.append("Capture:" + type(error).__name__)
@@ -192,8 +258,15 @@ def browser_worker(state: BrowserState):
                             result["frame_version"] = state.frame_version
                             done.set()
             finally:
-                context.close()
+                if not headful:
+                    context.close()
                 browser.close()
+                if chrome_process is not None:
+                    chrome_process.terminate()
+                    try:
+                        chrome_process.wait(timeout=6)
+                    except subprocess.TimeoutExpired:
+                        chrome_process.kill()
     except Exception as error:
         with state.lock:
             state.failure = type(error).__name__
