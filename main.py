@@ -5,6 +5,8 @@ import os
 from auth import Settings, OAuth, BearerGate
 from machine import Machine
 from browser import browser_setup as setup_browser, browser_visit as visit_browser
+from browser_journey import browser_journey as run_browser_journey
+from railway_diagnostics import RailwayInspector
 
 
 def build_app(machine_factory=None):
@@ -17,6 +19,7 @@ def build_app(machine_factory=None):
     settings=Settings.from_env()
     oauth=OAuth(settings)
     machine=Machine(oauth,sandbox_factory=machine_factory)
+    railway=RailwayInspector()
     mcp=FastMCP('dev-mcp · E2B cloud machine')
 
     @mcp.tool()
@@ -85,6 +88,30 @@ def build_app(machine_factory=None):
         """Open a web page in E2B Chromium; optionally click/fill CSS selector; return title, text, links, and screenshot path. Run browser_setup first."""
         return visit_browser(machine, workspace_id, url, action, selector, value)
 
+    @mcp.tool()
+    def browser_journey(workspace_id: str, url: str,
+                        steps: list[dict] | None = None,
+                        viewport: str = "mobile") -> dict:
+        """Run up to 15 sequential Chromium interactions in one sandbox browser session, capturing console failures and a screenshot. Call browser_setup first."""
+        return run_browser_journey(machine, workspace_id, url, steps or [], viewport)
+
+    @mcp.tool()
+    def browser_capture(workspace_id: str):
+        """Return the last browser screenshot as an actual image from this signed E2B workspace."""
+        from fastmcp.utilities.types import Image
+        return Image(data=machine.read_capture(workspace_id), format="jpeg")
+
+    @mcp.tool()
+    def railway_deployments(limit: int = 10) -> dict:
+        """Read recent deployments for the one Railway service configured on the gateway. No mutations."""
+        return railway.deployments(limit)
+
+    @mcp.tool()
+    def railway_logs(deployment_id: str, kind: str = "build",
+                     limit: int = 100) -> dict:
+        """Read sanitized build/runtime logs for a verified deployment of that configured Railway service."""
+        return railway.logs(deployment_id, kind, limit)
+
     async def health(request: Request):
         return JSONResponse({
             'ready': True,
@@ -95,6 +122,7 @@ def build_app(machine_factory=None):
             'workspace_available': machine.e2b_configured,
             'workspace_recovery_available': machine.e2b_configured,
             'workspace_recovery_version': 1,
+            'railway_diagnostics_configured': railway.configured,
         })
 
     mcp_app=mcp.http_app()
