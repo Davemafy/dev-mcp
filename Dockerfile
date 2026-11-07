@@ -3,8 +3,9 @@ ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1
 WORKDIR /app
 COPY requirements.txt ./
 RUN pip install --no-cache-dir -r requirements.txt
-COPY auth.py machine.py browser.py host_access.py main.py ./
+COPY auth.py machine.py browser.py host_access.py entrypoint.py main.py ./
 RUN useradd --create-home --uid 10001 appuser && mkdir -p /data && chown appuser:appuser /data
-USER appuser
+# Railway mounts volumes owned by root. entrypoint.py prepares /data once,
+# then drops all process privileges to the existing non-root appuser.
 EXPOSE 8000
-CMD ["python", "main.py"]
+CMD ["python", "entrypoint.py"]

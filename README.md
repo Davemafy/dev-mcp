@@ -125,3 +125,15 @@ The trusted host fingerprint must come from Vultr, not merely a network
 scan of the host being connected to. The Railway volume holds a
 high-value restricted SSH credential; protect owner OAuth credentials,
 Railway access and the volume. Do not expose this connector to other users.
+
+
+### Railway volume permissions
+
+Railway volumes are initially root-owned. The production Docker entrypoint
+changes ownership of the mounted \`/data\` directory to UID 10001, then drops
+root privileges before starting the MCP/OAuth gateway. The running API and
+SSH client therefore stay non-root. CI runs a real Docker container with a
+volume, verifies a persistent file after restart, and verifies the gateway
+UID is 10001. Do **not** set \`RAILWAY_RUN_UID=10001\` as an overriding
+Railway deployment variable; doing so would prevent the one-time mount
+ownership setup. Existing Railway auth secrets should remain unchanged.

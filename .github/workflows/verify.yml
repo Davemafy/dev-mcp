@@ -24,7 +24,7 @@ jobs:
           python -m pip install --upgrade pip
           python -m pip install -r requirements.txt pytest httpx
       - name: Compile Python modules
-        run: python -m compileall -q main.py auth.py machine.py browser.py host_access.py tests/
+        run: python -m compileall -q main.py auth.py machine.py browser.py host_access.py entrypoint.py tests/
       - name: Run local unit and protocol simulations
         run: pytest -q
       - name: Instantiate actual FastMCP HTTP application
@@ -87,3 +87,23 @@ jobs:
           curl --fail --silent --show-error http://127.0.0.1:18099/health | grep -q '"e2b_configured":false'
           docker logs dev-mcp-ci | grep -q 'Initial owner login password'
           echo "Railway Docker image boots, provisions OAuth login, and explains missing E2B configuration."
+      - name: Verify mounted volume survives restart without running app as root
+        run: |
+          set -euo pipefail
+          docker volume create dev-mcp-ssh-ci
+          docker run -d --name dev-mcp-volume-ci -p 18100:18100             -v dev-mcp-ssh-ci:/data             -e PUBLIC_BASE_URL=http://127.0.0.1:18100 -e PORT=18100 dev-mcp:ci
+          trap 'docker logs dev-mcp-volume-ci || true; docker rm -f dev-mcp-volume-ci >/dev/null 2>&1 || true; docker volume rm dev-mcp-ssh-ci >/dev/null 2>&1 || true' EXIT
+          for attempt in $(seq 1 35); do
+            if curl -fsS --max-time 2 http://127.0.0.1:18100/health > /tmp/dev-mcp-volume-health.json; then break; fi
+            sleep 1
+          done
+          grep -q '"host_access_configured":true' /tmp/dev-mcp-volume-health.json
+          grep -q '"host_access_volume_mounted":true' /tmp/dev-mcp-volume-health.json
+          docker exec dev-mcp-volume-ci python -c             "import os; from pathlib import Path; assert os.geteuid()==10001; Path('/data/restart-check').write_text('persisted')"
+          docker restart dev-mcp-volume-ci
+          for attempt in $(seq 1 35); do
+            if curl -fsS --max-time 2 http://127.0.0.1:18100/health > /dev/null; then break; fi
+            sleep 1
+          done
+          docker exec dev-mcp-volume-ci python -c             "import os; from pathlib import Path; assert os.geteuid()==10001; assert Path('/data/restart-check').read_text()=='persisted'"
+          echo "Persistent Railway volume accessible after restart under non-root application UID."
