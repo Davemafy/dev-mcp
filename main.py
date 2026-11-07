@@ -5,6 +5,14 @@ import os
 from auth import Settings, OAuth, BearerGate
 from machine import Machine
 from browser import browser_setup as setup_browser, browser_visit as visit_browser
+from browser_journey import browser_journey as run_browser_journey
+from railway_diagnostics import RailwayInspector
+from stream_browser import BrowserStream
+from desktop_manager import DesktopManager
+from desktop_gateway import desktop_http, desktop_socket
+from adaptive_browser import AdaptiveBrowser
+from desktop_app import RESOURCE_URI as DESKTOP_UI_URI, desktop_app_html
+from browser_proxy import proxy_browser
 
 
 def build_app(machine_factory=None):
@@ -12,11 +20,15 @@ def build_app(machine_factory=None):
     from starlette.applications import Starlette
     from starlette.requests import Request
     from starlette.responses import JSONResponse
-    from starlette.routing import Route, Mount
+    from starlette.routing import Route, Mount, WebSocketRoute
 
     settings=Settings.from_env()
     oauth=OAuth(settings)
     machine=Machine(oauth,sandbox_factory=machine_factory)
+    railway=RailwayInspector()
+    streaming=BrowserStream(machine)
+    desktops=DesktopManager(machine)
+    adaptive=AdaptiveBrowser(streaming)
     mcp=FastMCP('dev-mcp · E2B cloud machine')
 
     @mcp.tool()
@@ -85,6 +97,128 @@ def build_app(machine_factory=None):
         """Open a web page in E2B Chromium; optionally click/fill CSS selector; return title, text, links, and screenshot path. Run browser_setup first."""
         return visit_browser(machine, workspace_id, url, action, selector, value)
 
+    @mcp.tool()
+    def browser_journey(workspace_id: str, url: str,
+                        steps: list[dict] | None = None,
+                        viewport: str = "mobile") -> dict:
+        """Run up to 15 sequential Chromium interactions in one sandbox browser session, capturing console failures and a screenshot. Call browser_setup first."""
+        return run_browser_journey(machine, workspace_id, url, steps or [], viewport)
+
+    @mcp.tool()
+    def browser_capture(workspace_id: str):
+        """Return the last browser screenshot as an actual image from this signed E2B workspace."""
+        from fastmcp.utilities.types import Image
+        return Image(data=machine.read_capture(workspace_id), format="jpeg")
+
+    @mcp.tool()
+    def browser_stream_start(workspace_id: str, url: str = "https://example.com",
+                             viewport: str = "desktop") -> dict:
+        """Start or reconnect a private live browser in a signed E2B workspace."""
+        return streaming.start(workspace_id, url, viewport)
+
+    @mcp.tool()
+    def browser_stream_action(workspace_id: str, action: str,
+                              selector: str = "", value: str = "",
+                              x: float | None = None, y: float | None = None,
+                              dy: float | None = None) -> dict:
+        """Control the active browser page using selectors, keyboard or coordinates."""
+        return streaming.action(workspace_id, action, selector, value, x, y, dy)
+
+    @mcp.tool()
+    def browser_stream_status(workspace_id: str) -> dict:
+        """Read browser state, page title, viewport and non-sensitive errors."""
+        return streaming.status(workspace_id)
+
+    @mcp.tool()
+    def browser_stream_stop(workspace_id: str) -> dict:
+        """Stop the active browser process and revoke its preview session."""
+        return streaming.stop(workspace_id)
+
+    @mcp.tool()
+    def browser_observe(workspace_id: str) -> dict:
+        """Inspect current interactive DOM, names and accessibility labels from the live browser to make a grounded plan."""
+        return adaptive.observe(workspace_id)
+
+    @mcp.tool()
+    def browser_adaptive_run(workspace_id: str, steps: list[dict],
+                             max_repairs: int = 2) -> dict:
+        """Execute a model-written browser action program on the SAME page. On failure return new DOM evidence so the model can rewrite only failed steps; no arbitrary JS injection."""
+        return adaptive.execute(workspace_id, steps, max_repairs)
+
+    # MCP Apps UI is optional; the base tool surface remains usable without it.
+    if hasattr(mcp, "resource"):
+        from fastmcp.apps import AppConfig, ResourceCSP
+        @mcp.tool(app=AppConfig(resourceUri=DESKTOP_UI_URI))
+        def desktop_viewer(workspace_id: str) -> dict:
+            """Render an optional interactive MCP App for the signed remote desktop. Start the desktop first; other tools work without this UI."""
+            state = desktops.status(workspace_id)
+            if not state.get("ready"):
+                return {"ready": False, "message": "Start the desktop first."}
+            return {"ready": True, "viewer_url": desktops._viewer(workspace_id),
+                    "display": state.get("display", ":99")}
+
+        @mcp.resource(
+            DESKTOP_UI_URI,
+            mime_type="text/html;profile=mcp-app",
+            app=AppConfig(
+                csp=ResourceCSP(
+                    frameDomains=[settings.base_url.rstrip("/")],
+                    connectDomains=[settings.base_url.rstrip("/")],
+                ),
+                prefersBorder=False,
+            ),
+        )
+        def desktop_viewer_ui() -> str:
+            """Optional ChatGPT-compatible MCP Apps viewer."""
+            return desktop_app_html(settings.base_url)
+
+    @mcp.tool()
+    def desktop_setup(workspace_id: str) -> dict:
+        """Install the X11/noVNC virtual desktop packages in a signed E2B sandbox."""
+        return desktops.setup(workspace_id)
+
+    @mcp.tool()
+    def desktop_start(workspace_id: str) -> dict:
+        """Start a real X11 desktop and return a short-lived private noVNC viewing link."""
+        return desktops.start(workspace_id)
+
+    @mcp.tool()
+    def desktop_status(workspace_id: str) -> dict:
+        """Check the real X11 desktop and VNC service without creating anything."""
+        return desktops.status(workspace_id)
+
+    @mcp.tool()
+    def desktop_stop(workspace_id: str) -> dict:
+        """Stop the virtual desktop supervisor and its VNC and window-manager children."""
+        return desktops.stop(workspace_id)
+
+    @mcp.tool()
+    def desktop_browser_open(workspace_id: str, url: str = "https://example.com") -> dict:
+        """Open Chromium in the SAME virtual desktop seen by noVNC. Run desktop_start and browser_setup first."""
+        if not desktops.status(workspace_id).get("ready"):
+            return {"ready": False, "error": "Start the virtual desktop first."}
+        return streaming.start(workspace_id, url, viewport="desktop", headful=True)
+
+    @mcp.tool()
+    def railway_deployments(limit: int = 10) -> dict:
+        """Read recent deployments for the one Railway service configured on the gateway. No mutations."""
+        return railway.deployments(limit)
+
+    @mcp.tool()
+    def railway_logs(deployment_id: str, kind: str = "build",
+                     limit: int = 100) -> dict:
+        """Read sanitized build/runtime logs for a verified deployment of that configured Railway service."""
+        return railway.logs(deployment_id, kind, limit)
+
+    async def browser_view(request: Request):
+        return await proxy_browser(request, machine, oauth)
+
+    async def desktop_view(request: Request):
+        return await desktop_http(request, machine, oauth)
+
+    async def desktop_websocket(websocket):
+        return await desktop_socket(websocket, machine, oauth)
+
     async def health(request: Request):
         return JSONResponse({
             'ready': True,
@@ -95,11 +229,17 @@ def build_app(machine_factory=None):
             'workspace_available': machine.e2b_configured,
             'workspace_recovery_available': machine.e2b_configured,
             'workspace_recovery_version': 1,
+            'railway_diagnostics_configured': railway.configured,
         })
 
     mcp_app=mcp.http_app()
     # OAuth endpoints must be public; all MCP HTTP requests require access token.
     return Starlette(routes=[Route('/health',health),*oauth.routes(),
+        Route('/browser/{session}/',browser_view,methods=['GET','POST']),
+        Route('/browser/{session}/{path:path}',browser_view,methods=['GET','POST']),
+        Route('/desktop/{ticket}/',desktop_view,methods=['GET']),
+        Route('/desktop/{ticket}/{path:path}',desktop_view,methods=['GET']),
+        WebSocketRoute('/desktop/{ticket}/websockify',desktop_websocket),
         Mount('/',app=BearerGate(mcp_app,oauth))],lifespan=mcp_app.lifespan)
 
 

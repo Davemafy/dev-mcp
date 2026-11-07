@@ -1,0 +1,49 @@
+name: Dev MCP bridge tests
+
+on:
+  push:
+    branches:
+      - feat/browser-railway-bridge
+      - feat/desktop-adaptive-runtime
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install test dependencies
+        run: python -m pip install -r requirements.txt pytest httpx
+      - name: Check Python syntax
+        run: python -m compileall -q main.py machine.py browser.py browser_journey.py browser_proxy.py stream_browser.py stream_browser_server.py stream_browser_control.py railway_diagnostics.py desktop_runtime.py desktop_manager.py desktop_gateway.py adaptive_browser.py desktop_app.py
+      - name: Run unit and gateway tests
+        run: python -m pytest -q
+      - name: Build actual Railway Docker image
+        run: docker build -t dev-mcp:ci .
+
+      - name: Smoke test image startup and authentication boundaries
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker run -d --name dev-mcp-ci -p 127.0.0.1:8186:8000 \
+            -e PUBLIC_BASE_URL=http://127.0.0.1:8186 \
+            -e OWNER_PASSWORD='ci-only-test-password-12345' \
+            -e TOKEN_SIGNING_SECRET='ci-only-test-signing-secret-1234567890' \
+            -e AUTH_DB_PATH=/tmp/dev-mcp-ci-auth.sqlite \
+            dev-mcp:ci
+          trap 'docker logs --tail 60 dev-mcp-ci; docker rm -f dev-mcp-ci >/dev/null' EXIT
+          for i in $(seq 1 50); do
+            if curl -fsS --max-time 2 http://127.0.0.1:8186/health > /tmp/health.json; then break; fi
+            sleep 1
+          done
+          python -c 'import json; assert json.load(open("/tmp/health.json"))["ready"] is True'
+          test "$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8186/mcp)" = "401"
+          test "$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8186/desktop/invalid/vnc_lite.html)" = "401"
+          docker exec dev-mcp-ci python -c 'import main, desktop_gateway, desktop_runtime, adaptive_browser, desktop_app; print("Container import and auth smoke passed")'

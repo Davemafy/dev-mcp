@@ -32,8 +32,8 @@ with sync_playwright() as p:
         elif action == "fill":
             page.locator(selector).first.fill(value, timeout=8000)
         page.wait_for_timeout(300)
-        path = "/home/user/browser-captures/latest.png"
-        page.screenshot(path=path, full_page=True, timeout=12000)
+        path = "/home/user/browser-captures/latest.jpg"
+        page.screenshot(path=path, type="jpeg", quality=65, full_page=False, timeout=12000)
         print(json.dumps({
             "ok": True, "url": page.url, "title": page.title(),
             "status": response.status if response else None,

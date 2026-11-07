@@ -1,0 +1,93 @@
+name: Deploy Dev MCP experimental staging
+
+on:
+  push:
+    branches:
+      - feat/desktop-adaptive-runtime
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: dev-mcp-experimental-staging
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    if: github.ref == 'refs/heads/feat/desktop-adaptive-runtime' && vars.RAILWAY_STAGING_PROJECT_ID != '' && vars.RAILWAY_STAGING_SERVICE_ID != '' && vars.RAILWAY_STAGING_BASE_URL != ''
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    environment: dev-mcp-staging
+    env:
+      RAILWAY_TOKEN: ${{ secrets.RAILWAY_STAGING_TOKEN }}
+      PROJECT_ID: ${{ vars.RAILWAY_STAGING_PROJECT_ID }}
+      SERVICE_ID: ${{ vars.RAILWAY_STAGING_SERVICE_ID }}
+      STAGING_URL: ${{ vars.RAILWAY_STAGING_BASE_URL }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Confirm isolated staging target
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -z "${RAILWAY_TOKEN}" || -z "${PROJECT_ID}" || -z "${SERVICE_ID}" || -z "${STAGING_URL}" ]]; then
+            echo "::error::Configure the dev-mcp-staging GitHub environment with RAILWAY_STAGING_TOKEN secret and project/service/base-URL variables."
+            exit 1
+          fi
+          if [[ ! "${STAGING_URL}" =~ ^https://[A-Za-z0-9.-]+(/)?$ ]]; then
+            echo "::error::Staging base URL must be an HTTPS origin."
+            exit 1
+          fi
+          if [[ "${STAGING_URL}" == *dev-mcp-production* ]]; then
+            echo "::error::The production Dev MCP domain is not an allowed staging target."
+            exit 1
+          fi
+          echo "Deploying only to the Railway environment explicitly named staging."
+
+      - name: Test gateway
+        run: |
+          python -m pip install -r requirements.txt pytest
+          python -m compileall -q *.py
+          python -m pytest -q
+
+      - name: Build Railway Docker image
+        run: docker build -t dev-mcp:staging .
+
+      - name: Deploy to named staging environment
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm install --global @railway/cli
+          railway up --project "${PROJECT_ID}" --environment staging --service "${SERVICE_ID}" --ci
+
+      - name: Verify staging gateway (not just build completion)
+        shell: bash
+        run: |
+          set -euo pipefail
+          ok=0
+          for attempt in $(seq 1 30); do
+            if curl --fail --silent --show-error --max-time 8 "${STAGING_URL%/}/health" >/tmp/staging-health.json; then
+              if python - <<'PY'
+          import json
+          h=json.load(open("/tmp/staging-health.json"))
+          assert h.get("ready") is True and h.get("service") == "dev-mcp"
+          assert h.get("e2b_configured") is True, "E2B key absent on staging"
+          PY
+              then
+                ok=1
+                break
+              fi
+            fi
+            sleep 3
+          done
+          test "${ok}" -eq 1 || { echo "::error::Staging health not ready or E2B missing"; exit 1; }
+          test "$(curl --silent --output /dev/null --write-out '%{http_code}' "${STAGING_URL%/}/mcp")" = "401"
+          test "$(curl --silent --output /dev/null --write-out '%{http_code}' "${STAGING_URL%/}/desktop/invalid/vnc_lite.html")" = "401"
+          echo "Staging health and unauthenticated-route checks passed."
