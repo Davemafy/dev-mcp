@@ -11,6 +11,7 @@ from stream_browser import BrowserStream
 from desktop_manager import DesktopManager
 from desktop_gateway import desktop_http, desktop_socket
 from adaptive_browser import AdaptiveBrowser
+from desktop_app import RESOURCE_URI as DESKTOP_UI_URI, desktop_app_html
 from browser_proxy import proxy_browser
 
 
@@ -143,6 +144,33 @@ def build_app(machine_factory=None):
                              max_repairs: int = 2) -> dict:
         """Execute a model-written browser action program on the SAME page. On failure return new DOM evidence so the model can rewrite only failed steps; no arbitrary JS injection."""
         return adaptive.execute(workspace_id, steps, max_repairs)
+
+    # MCP Apps UI is optional; the base tool surface remains usable without it.
+    if hasattr(mcp, "resource"):
+        from fastmcp.apps import AppConfig, ResourceCSP
+        @mcp.tool(app=AppConfig(resourceUri=DESKTOP_UI_URI))
+        def desktop_viewer(workspace_id: str) -> dict:
+            """Render an optional interactive MCP App for the signed remote desktop. Start the desktop first; other tools work without this UI."""
+            state = desktops.status(workspace_id)
+            if not state.get("ready"):
+                return {"ready": False, "message": "Start the desktop first."}
+            return {"ready": True, "viewer_url": desktops._viewer(workspace_id),
+                    "display": state.get("display", ":99")}
+
+        @mcp.resource(
+            DESKTOP_UI_URI,
+            mime_type="text/html;profile=mcp-app",
+            app=AppConfig(
+                csp=ResourceCSP(
+                    frameDomains=[settings.base_url.rstrip("/")],
+                    connectDomains=[settings.base_url.rstrip("/")],
+                ),
+                prefersBorder=False,
+            ),
+        )
+        def desktop_viewer_ui() -> str:
+            """Optional ChatGPT-compatible MCP Apps viewer."""
+            return desktop_app_html(settings.base_url)
 
     @mcp.tool()
     def desktop_setup(workspace_id: str) -> dict:
