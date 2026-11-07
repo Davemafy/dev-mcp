@@ -142,3 +142,7 @@ The viewer is a low-frame-rate multipart JPEG stream, **not a 60 fps VNC desktop
 - Local authenticated stream accepted requests with a bearer capability and returned actual multipart JPEG frames; unauthenticated requests returned HTTP 401.
 - An E2B preview URL *without* the traffic header returned HTTP 403, as expected; the new Railway reverse proxy is tested with a mocked upstream but still needs deployment and external-browser verification.
 - The experimental browser does not implement audio streaming, an entire desktop/window manager, durable multi-hour jobs, or a guarantee of uptime after an E2B workspace expires.
+
+## Experimental full remote desktop
+
+The separate `feat/desktop-adaptive-runtime` branch adds a real Xvfb/Fluxbox/noVNC desktop, a protected WebSocket gateway, visible Chromium on that desktop, model-written adaptive Playwright actions, and loopback-only CDP script attachment. See [the desktop engineering guide](docs/desktop-runtime.md) for setup, constraints, security and verification receipts. This is **not yet deployed**.
