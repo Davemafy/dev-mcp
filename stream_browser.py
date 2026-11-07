@@ -30,7 +30,9 @@ class BrowserStream:
         try:
             saved = self.machine.read(workspace_id, CONFIG)
             return json.loads(saved["content"])
-        except (OSError, ValueError, KeyError, RuntimeError):
+        except Exception:
+            # Missing configs have SDK-specific exception types. All file
+            # requests already pass through the signed workspace gate.
             return None
 
     def _local(self, workspace_id, payload=None):
