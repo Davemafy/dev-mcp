@@ -146,3 +146,12 @@ The viewer is a low-frame-rate multipart JPEG stream, **not a 60 fps VNC desktop
 ## Experimental full remote desktop
 
 The separate `feat/desktop-adaptive-runtime` branch adds a real Xvfb/Fluxbox/noVNC desktop, a protected WebSocket gateway, visible Chromium on that desktop, model-written adaptive Playwright actions, loopback-only CDP script attachment, and an optional MCP Apps viewer resource. See [the desktop engineering guide](docs/desktop-runtime.md) for setup, constraints, security and verification receipts. This is **not yet deployed**.
+
+## Browser progress and context guards
+
+The isolated `feat/agent-progress-guards` branch adds a browser-side
+no-progress circuit breaker, enforced model-repair ticket budgets and
+deterministic semantic observation deltas. Its test receipts, limitations and
+integration details are in [docs/progress-guards.md](docs/progress-guards.md).
+These features reduce redundant work and model-visible output; they do not
+bypass ChatGPT usage limits. This branch is not deployed.
