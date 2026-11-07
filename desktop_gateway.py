@@ -25,7 +25,7 @@ HOST_RE = re.compile(r"^[A-Za-z0-9.-]{8,255}$")
 SANDBOX_RE = re.compile(r"^[A-Za-z0-9-]{8,80}$")
 ASSETS = ("app/", "core/", "vendor/", "images/", "favicon.ico",
           "vnc.html", "vnc_lite.html", "vnc_auto.html")
-MAX_FRAME = 1024 * 1024
+MAX_FRAME = 6 * 1024 * 1024
 
 
 def verify_ticket(oauth, ticket):
