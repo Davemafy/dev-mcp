@@ -1,6 +1,9 @@
 name: Deploy Dev MCP experimental staging
 
 on:
+  push:
+    branches:
+      - feat/desktop-adaptive-runtime
   workflow_dispatch:
 
 permissions:
@@ -12,7 +15,7 @@ concurrency:
 
 jobs:
   deploy:
-    if: github.ref == 'refs/heads/feat/desktop-adaptive-runtime'
+    if: github.ref == 'refs/heads/feat/desktop-adaptive-runtime' && vars.RAILWAY_STAGING_PROJECT_ID != '' && vars.RAILWAY_STAGING_SERVICE_ID != '' && vars.RAILWAY_STAGING_BASE_URL != ''
     runs-on: ubuntu-latest
     timeout-minutes: 25
     environment: dev-mcp-staging
