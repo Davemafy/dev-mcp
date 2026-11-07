@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - feat/browser-railway-bridge
+      - feat/desktop-adaptive-runtime
   workflow_dispatch:
 
 permissions:
