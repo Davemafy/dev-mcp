@@ -71,3 +71,45 @@ sites accessible from that workspace, so treat the tool as privileged and do not
 expose the owner-authenticated gateway to untrusted users. The screenshots remain
 in the E2B machine and are not directly attached to chat. Every new disposable
 workspace requires a new browser installation.
+
+
+## Experimental Work-style bridge (branch: feat/browser-railway-bridge)
+
+This branch adds four MCP tools to the existing owner-authenticated gateway:
+
+- \`browser_journey(workspace_id, url, steps, viewport)\` runs up to 15 sequential Playwright actions in **one** Chromium browser context, for mobile or desktop, and records the screenshot path, visible content, failed requests, and JavaScript errors.
+- \`browser_capture(workspace_id)\` returns that screenshot as MCP **ImageContent** (not merely a filename) so an assistant with image-capable tool access can inspect the pixels. It only reads the fixed capture file inside the signed E2B workspace.
+- \`railway_deployments(limit)\` lists status/IDs for a single configured Railway service.
+- \`railway_logs(deployment_id, kind, limit)\` provides sanitized read-only build/runtime logs, verifying that the requested deployment belongs to the configured service.
+
+The current deployed MCP connection will not expose newly registered tools until this branch is deployed and the client refreshes its tool discovery. Installing code alone does not refresh the ChatGPT connector.
+
+### Railway diagnostics configuration
+
+Set these as **Dev MCP gateway** environment variables in Railway, not inside an E2B sandbox and not in chat:
+
+\`\`\`dotenv
+RAILWAY_PROJECT_TOKEN=...    # project-scoped token, preferred
+RAILWAY_PROJECT_ID=...
+RAILWAY_SERVICE_ID=...
+RAILWAY_ENVIRONMENT_ID=...
+\`\`\`
+
+Alternatively use \`RAILWAY_API_TOKEN\` (account/workspace token) but prefer the least-privileged project token. The integration only sends GraphQL **queries**, never mutations. The project token uses Railway's \`Project-Access-Token\` header. Logs are bounded and known sensitive patterns are redacted; because arbitrary app output may leak secrets in novel formats, do not treat the redaction as an absolute guarantee.
+
+### Browser testing
+
+1. Create or recover a signed E2B workspace.
+2. Call \`browser_setup\` once (installs Playwright/Chromium into that sandbox).
+3. Call \`browser_journey\` with an HTTPS URL and a sequence like \`[{"action":"fill","selector":"input","value":"hello"},{"action":"click","selector":"button"},{"action":"assert_text","selector":"body","value":"hello"}]\`.
+4. Call \`browser_capture\` to view the final screenshot.
+
+Supported step actions: \`click\`, \`fill\`, \`press\`, \`wait_for\`, \`assert_text\`, \`scroll\`. Each step is validated and bounded. Actions execute inside E2B, not in the gateway. The screenshot is a compressed viewport JPEG; it is not a full-page screenshot. The browser context survives across the steps of **one journey**, not across separate calls; use one journey for one continuous interaction.
+
+### What's not yet implemented
+
+A multi-hour, chat-independent engineering worker needs persistent job storage, a worker scheduler, controlled retries and resumable checkpoints. It is not supplied by an E2B terminal background process alone. A proposed implementation is a persistent Railway worker with a durable queue and short-lived, signed E2B workspaces; make job cancellation and budget controls part of its initial design. Do not advertise this branch as a running autonomous agent.
+
+### Verification
+
+The E2B test run completed \`python -m pytest -q\` with **37 passed** and \`python -m compileall\` without syntax errors. These are mocked-unit tests, not a live Railway token query or a real Chromium acceptance run. Enable the appropriate gateway variables and run live smoke tests only after deployment and tool discovery have refreshed.
