@@ -170,3 +170,13 @@ def test_ssh_transport_failure_does_not_create_false_authorization(access):
         m.status()
     record = json.loads((m.state_dir / "host-key.json").read_text())
     assert record["authorized_until"] == 0
+
+
+def test_railway_volume_auto_discovery_does_not_need_an_env_override(monkeypatch):
+    monkeypatch.delenv("HOST_SSH_STATE_DIR", raising=False)
+    monkeypatch.setattr("host_access.os.path.ismount", lambda path: str(path) == "/data")
+    auto = HostAccess.from_env()
+    assert auto.configured()
+    assert str(auto.state_dir) == "/data/refit-host-ssh"
+    monkeypatch.setattr("host_access.os.path.ismount", lambda path: False)
+    assert not HostAccess.from_env().configured()

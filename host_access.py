@@ -74,7 +74,9 @@ class HostAccess:
 
     @classmethod
     def from_env(cls) -> "HostAccess":
-        return cls(os.getenv("HOST_SSH_STATE_DIR", "").strip() or None)
+        # No Railway variable is needed if the owner already mounted /data.
+        # configured() still fails closed when /data is not a real volume.
+        return cls(os.getenv("HOST_SSH_STATE_DIR", "").strip() or "/data/refit-host-ssh")
 
     def configured(self) -> bool:
         if self.state_dir is None or not self.state_dir.is_absolute():

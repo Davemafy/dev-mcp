@@ -80,8 +80,10 @@ The gateway now includes three **owner-authenticated** MCP tools:
 and \`host_access_deploy(revision)\`. Unlike \`run_terminal_command\`, these
 operate through the Railway gateway, not a disposable E2B workspace.
 The connector is disabled unless a **real persistent Railway volume** is
-mounted at \`/data\` and the Railway variable
-\`HOST_SSH_STATE_DIR=/data/refit-host-ssh\` is set. The directory must
+mounted at \`/data\`. The gateway automatically uses
+\`/data/refit-host-ssh\`; the optional Railway variable
+\`HOST_SSH_STATE_DIR\` can choose another subdirectory of that mount.
+The directory must
 remain on the volume across Railway deployments. Without that configuration,
 the tools fail closed rather than quietly generate ephemeral credentials.
 
@@ -115,8 +117,9 @@ The *same* persisted client private key is reused; no new secret needs
 copying. This five-hour authorization cannot renew itself remotely.
 
 **Limitations:** pushing this repository does not prove Railway's deployment,
-persistent volume or outbound SSH works. Confirm \`/health\` reports
-\`host_access_version: 1\` and \`host_access_configured: true\`, then verify
+persistent volume or outbound SSH works. Confirm \`/health\` reports \`host_access_version: 1\`,
+\`host_access_volume_mounted: true\` and \`host_access_configured: true\`,
+then verify
 \`host_access_status()\` against the live VM before claiming access.
 The trusted host fingerprint must come from Vultr, not merely a network
 scan of the host being connected to. The Railway volume holds a

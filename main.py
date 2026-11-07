@@ -115,6 +115,7 @@ def build_app(machine_factory=None):
             'workspace_recovery_version': 1,
             'host_access_version': 1,
             'host_access_configured': host_access.configured(),
+            'host_access_volume_mounted': os.path.ismount('/data'),
         })
 
     mcp_app=mcp.http_app()
