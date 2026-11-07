@@ -12,6 +12,7 @@ from desktop_manager import DesktopManager
 from desktop_gateway import desktop_http, desktop_socket
 from adaptive_browser import AdaptiveBrowser
 from desktop_app import RESOURCE_URI as DESKTOP_UI_URI, desktop_app_html
+from agent_jobs import AgentJobs
 from browser_proxy import proxy_browser
 
 
@@ -29,6 +30,7 @@ def build_app(machine_factory=None):
     streaming=BrowserStream(machine)
     desktops=DesktopManager(machine)
     adaptive=AdaptiveBrowser(streaming)
+    jobs=AgentJobs(machine,adaptive)
     mcp=FastMCP('dev-mcp · E2B cloud machine')
 
     @mcp.tool()
@@ -200,6 +202,38 @@ def build_app(machine_factory=None):
         return streaming.start(workspace_id, url, viewport="desktop", headful=True)
 
     @mcp.tool()
+    def agent_job_submit(workspace_id: str, goal: str,
+                         max_steps: int = 8, allow_shell: bool = False,
+                         allow_interaction: bool = False) -> dict:
+        """Create a bounded durable agent job with explicit shell/edit authorization."""
+        return jobs.submit(workspace_id, goal, max_steps, allow_shell, allow_interaction)
+
+    @mcp.tool()
+    def agent_job_status(job_id: str) -> dict:
+        """Inspect a job's state and its last evidence."""
+        return jobs.store.public(job_id) or {"error": "Job not found"}
+
+    @mcp.tool()
+    def agent_job_events(job_id: str, limit: int = 30) -> dict:
+        """Inspect the recorded execution, failure and restart receipts."""
+        return {"job_id": job_id, "events": jobs.store.history(job_id, limit)}
+
+    @mcp.tool()
+    def agent_job_list(limit: int = 15) -> dict:
+        """List the owner's current and previous jobs."""
+        return {"jobs": jobs.store.list(limit)}
+
+    @mcp.tool()
+    def agent_job_control(job_id: str, action: str) -> dict:
+        """Pause, cancel or explicitly resume a saved job."""
+        return jobs.store.control(job_id, action)
+
+    @mcp.tool()
+    def agent_job_runtime() -> dict:
+        """Read the worker and inference configuration status."""
+        return jobs.status()
+
+    @mcp.tool()
     def railway_deployments(limit: int = 10) -> dict:
         """Read recent deployments for the one Railway service configured on the gateway. No mutations."""
         return railway.deployments(limit)
@@ -230,9 +264,20 @@ def build_app(machine_factory=None):
             'workspace_recovery_available': machine.e2b_configured,
             'workspace_recovery_version': 1,
             'railway_diagnostics_configured': railway.configured,
+            'agent_jobs_enabled': jobs.enabled and jobs.planner.configured,
         })
 
     mcp_app=mcp.http_app()
+    from contextlib import asynccontextmanager
+
+    @asynccontextmanager
+    async def runtime_lifespan(app):
+        jobs.start()
+        try:
+            async with mcp_app.lifespan(app):
+                yield
+        finally:
+            jobs.worker.stop()
     # OAuth endpoints must be public; all MCP HTTP requests require access token.
     return Starlette(routes=[Route('/health',health),*oauth.routes(),
         Route('/browser/{session}/',browser_view,methods=['GET','POST']),
@@ -240,7 +285,7 @@ def build_app(machine_factory=None):
         Route('/desktop/{ticket}/',desktop_view,methods=['GET']),
         Route('/desktop/{ticket}/{path:path}',desktop_view,methods=['GET']),
         WebSocketRoute('/desktop/{ticket}/websockify',desktop_websocket),
-        Mount('/',app=BearerGate(mcp_app,oauth))],lifespan=mcp_app.lifespan)
+        Mount('/',app=BearerGate(mcp_app,oauth))],lifespan=runtime_lifespan)
 
 
 if __name__ == '__main__':

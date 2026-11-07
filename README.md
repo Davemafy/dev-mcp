@@ -146,3 +146,17 @@ The viewer is a low-frame-rate multipart JPEG stream, **not a 60 fps VNC desktop
 ## Experimental full remote desktop
 
 The separate `feat/desktop-adaptive-runtime` branch adds a real Xvfb/Fluxbox/noVNC desktop, a protected WebSocket gateway, visible Chromium on that desktop, model-written adaptive Playwright actions, loopback-only CDP script attachment, and an optional MCP Apps viewer resource. See [the desktop engineering guide](docs/desktop-runtime.md) for setup, constraints, security and verification receipts. This is **not yet deployed**.
+
+## Durable autonomous engineering jobs (experimental)
+
+The \`feat/durable-agent-jobs\` branch adds a separately deployable
+single-owner job worker, SQLite checkpoints, conservative crash recovery,
+model-directed browser/terminal steps, and event receipts. All execution
+happens inside an existing authorized E2B sandbox. Nothing is enabled on
+production by default.
+
+**See [setup, security and verification](docs/agent-jobs.md).** The worker
+requires a mounted Railway staging volume, an explicit enabled flag, and
+a separately configured inference provider. Browser interaction and terminal
+editing are separately opt-in; jobs have step limits and can be paused,
+cancelled and inspected.
