@@ -140,10 +140,15 @@ def build_app(machine_factory=None):
         return adaptive.observe(workspace_id)
 
     @mcp.tool()
+    def browser_observe_delta(workspace_id: str, base_id: str | None = None) -> dict:
+        """Send a full semantic browser snapshot once; on subsequent calls pass snapshot_id as base_id to receive only changed elements and text. Screenshots remain available separately."""
+        return adaptive.observe_delta(workspace_id, base_id)
+
+    @mcp.tool()
     def browser_adaptive_run(workspace_id: str, steps: list[dict],
-                             max_repairs: int = 2) -> dict:
-        """Execute a model-written browser action program on the SAME page. On failure return new DOM evidence so the model can rewrite only failed steps; no arbitrary JS injection."""
-        return adaptive.execute(workspace_id, steps, max_repairs)
+                             max_repairs: int = 2, repair_id: str | None = None) -> dict:
+        """Run model-written steps on one live page. After a failure reuse the returned repair_id; the original attempt and at most max_repairs corrections are enforced. No arbitrary JS injection."""
+        return adaptive.execute(workspace_id, steps, max_repairs, repair_id)
 
     # MCP Apps UI is optional; the base tool surface remains usable without it.
     if hasattr(mcp, "resource"):
