@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - feat/desktop-adaptive-runtime
+      - feat/durable-agent-jobs
   workflow_dispatch:
 
 permissions:
@@ -15,7 +16,7 @@ concurrency:
 
 jobs:
   deploy:
-    if: github.ref == 'refs/heads/feat/desktop-adaptive-runtime' && vars.RAILWAY_STAGING_PROJECT_ID != '' && vars.RAILWAY_STAGING_SERVICE_ID != '' && vars.RAILWAY_STAGING_BASE_URL != ''
+    if: (github.ref == 'refs/heads/feat/desktop-adaptive-runtime' || github.ref == 'refs/heads/feat/durable-agent-jobs') && vars.RAILWAY_STAGING_PROJECT_ID != '' && vars.RAILWAY_STAGING_SERVICE_ID != '' && vars.RAILWAY_STAGING_BASE_URL != ''
     runs-on: ubuntu-latest
     timeout-minutes: 25
     environment: dev-mcp-staging
