@@ -4,6 +4,8 @@ on:
   push:
     branches:
       - feat/browser-railway-bridge
+      - feat/desktop-adaptive-runtime
+      - feat/agent-progress-guards
   workflow_dispatch:
 
 permissions:
@@ -21,6 +23,6 @@ jobs:
       - name: Install test dependencies
         run: python -m pip install -r requirements.txt pytest httpx
       - name: Check Python syntax
-        run: python -m compileall -q main.py machine.py browser.py browser_journey.py browser_proxy.py stream_browser.py stream_browser_server.py stream_browser_control.py railway_diagnostics.py desktop_runtime.py desktop_manager.py desktop_gateway.py adaptive_browser.py desktop_app.py
+        run: python -m compileall -q main.py machine.py browser.py browser_journey.py browser_proxy.py stream_browser.py stream_browser_server.py stream_browser_control.py railway_diagnostics.py desktop_runtime.py desktop_manager.py desktop_gateway.py adaptive_browser.py desktop_app.py progress_guard.py observation_delta.py
       - name: Run unit and gateway tests
         run: python -m pytest -q
