@@ -160,8 +160,6 @@ def browser_worker(state: BrowserState):
                         except Exception as e:
                             result.update({"ok": False, "action": payload["action"],
                                            "error": type(e).__name__})
-                        finally:
-                            done.set()
                     # Idle headless Chromium should not continuously re-render a
                     # static page on the smallest E2B machine. Active viewers
                     # get roughly one new frame per second; actions capture now.
@@ -187,6 +185,12 @@ def browser_worker(state: BrowserState):
                         with state.lock:
                             state.errors.append("Capture:" + type(error).__name__)
                             state.errors = state.errors[-8:]
+                    finally:
+                        if item is not None:
+                            # Only acknowledge an action after its new visual
+                            # frame has been captured (or capture has failed).
+                            result["frame_version"] = state.frame_version
+                            done.set()
             finally:
                 context.close()
                 browser.close()
