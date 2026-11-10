@@ -64,7 +64,18 @@ def validate_browser_input(url: str, action: str, selector: str, value: str):
 
 
 def browser_setup(machine, workspace_id: str) -> dict:
-    """Install Playwright/Chromium into this disposable workspace only."""
+    """Reuse installed Chromium; provision it only when the sandbox needs it."""
+    probe = (
+        "python3 -c " + shlex.quote(
+            "from playwright.sync_api import sync_playwright;"
+            "p=sync_playwright().start();"
+            "b=p.chromium.launch(headless=True,args=['--no-sandbox']);"
+            "b.close();p.stop()"
+        )
+    )
+    check = machine.run(workspace_id, probe, timeout_seconds=15)
+    if check.get("exit_code") == 0:
+        return {"installed": True, "reused": True, "exit_code": 0}
     command = (
         "python -m pip install -q playwright && "
         "sudo -n python -m playwright install-deps chromium >/dev/null 2>&1 && "
@@ -76,7 +87,7 @@ def browser_setup(machine, workspace_id: str) -> dict:
         "sudo -n swapon /tmp/devmcp-browser.swap))"
     )
     result = machine.run(workspace_id, command, timeout_seconds=300)
-    return {"installed": result["exit_code"] == 0, **result}
+    return {"installed": result["exit_code"] == 0, "reused": False, **result}
 
 
 def browser_visit(machine, workspace_id: str, url: str, action: str = "inspect",
