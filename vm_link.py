@@ -28,16 +28,20 @@ MAX_RESULT = 100_000
 
 
 class VmLink:
-    def __init__(self, oauth):
+    def __init__(self, oauth, *, test_db=None):
         self.oauth = oauth
         self.token = os.getenv("VM_WORKER_TOKEN", "")
-        db = os.getenv("VM_JOB_DB", "/data/devmcp-vm-jobs.sqlite")
+        db = test_db or os.getenv("VM_JOB_DB", "/data/devmcp-vm-jobs.sqlite")
         self.db_path = Path(db)
-        self.enabled = (
-            len(self.token) >= 32 and os.getenv("STATELESS_GATEWAY") != "1"
+        durable_path = (
+            self.db_path.is_absolute()
             and str(self.db_path).startswith("/data/")
             and ".." not in self.db_path.parts
             and os.path.ismount("/data")
+        )
+        self.enabled = (
+            len(self.token) >= 32 and os.getenv("STATELESS_GATEWAY") != "1"
+            and (durable_path or test_db is not None)
         )
         if self.enabled:
             self.db_path.parent.mkdir(parents=True, exist_ok=True)
