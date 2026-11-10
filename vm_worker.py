@@ -15,6 +15,7 @@ import shutil
 import signal
 import subprocess
 import tempfile
+import threading
 import time
 from urllib.parse import urlsplit
 from urllib.request import Request, urlopen
@@ -22,6 +23,7 @@ from urllib.request import Request, urlopen
 ROOT = Path("/workspaces")
 IDENT = re.compile(r"^[a-f0-9]{32}$")
 UID = 10001
+GID = 10001
 RUNNING = {}
 SAFE_ENV = {
     "PATH": "/usr/local/bin:/usr/bin:/bin",
@@ -30,10 +32,13 @@ SAFE_ENV = {
 }
 
 
-def _drop_privileges():
-    os.setgroups([])
-    os.setgid(UID)
-    os.setuid(UID)
+def _child_identity():
+    """Avoid Python preexec_fn, which is unsafe with heartbeat threads."""
+    if os.geteuid() == 0:
+        return {"user": UID, "group": GID, "extra_groups": []}
+    if os.geteuid() == UID and os.getegid() == GID:
+        return {}
+    raise RuntimeError("Worker must have permission to run commands as the isolated user")
 
 
 def _root(identifier):
@@ -76,7 +81,7 @@ def run_command(root, command, timeout=90):
         proc = subprocess.Popen(
             args, cwd=str(root), env=env, stdin=subprocess.DEVNULL,
             stdout=stdout, stderr=stderr, close_fds=True,
-            start_new_session=True, preexec_fn=_drop_privileges,
+            start_new_session=True, **_child_identity(),
         )
         try:
             rc = proc.wait(timeout=timeout)
@@ -169,7 +174,7 @@ def execute(action, args):
         proc = subprocess.Popen(
             cmd, cwd=str(root), env=env, stdin=subprocess.DEVNULL,
             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-            close_fds=True, start_new_session=True, preexec_fn=_drop_privileges,
+            close_fds=True, start_new_session=True, **_child_identity(),
         )
         RUNNING[(wid, proc.pid)] = proc
         return {"pid": proc.pid, "started": True}
@@ -199,6 +204,16 @@ def _post(base, token, endpoint, payload):
         return json.loads(response)
 
 
+def _heartbeat_loop(base, token):
+    # Heartbeats must continue during long-running development commands.
+    while True:
+        try:
+            _post(base, token, "heartbeat", {})
+        except Exception:
+            pass
+        time.sleep(5)
+
+
 def main():
     base = os.getenv("VM_GATEWAY_URL", "").rstrip("/")
     token = os.getenv("VM_WORKER_TOKEN", "")
@@ -210,6 +225,8 @@ def main():
     if not ROOT.is_dir() or not os.access(ROOT, os.W_OK):
         raise SystemExit("Worker workspace volume is missing or not writable")
     print("DevMCP Vultr worker started; outbound HTTPS only", flush=True)
+    threading.Thread(target=_heartbeat_loop, args=(base, token),
+                     daemon=True, name="vm-heartbeat").start()
     retry = 1
     while True:
         try:
