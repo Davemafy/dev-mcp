@@ -1,0 +1,6 @@
+FROM node:22-bookworm-slim
+RUN apt-get update -qq && apt-get install -y -qq --no-install-recommends python3 python3-pip git curl ca-certificates && rm -rf /var/lib/apt/lists/*
+COPY vm_worker.py /opt/devmcp/vm_worker.py
+ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1
+WORKDIR /opt/devmcp
+CMD ["python3", "/opt/devmcp/vm_worker.py"]
