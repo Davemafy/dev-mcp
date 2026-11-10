@@ -118,7 +118,7 @@ def build_app(machine_factory=None):
             'host_access_volume_mounted': os.path.ismount('/data'),
         })
 
-    mcp_app=mcp.http_app(stateless_http=os.getenv('STATELESS_GATEWAY', '') == '1')
+    mcp_app=(mcp.http_app(stateless_http=True) if os.getenv('STATELESS_GATEWAY') == '1' else mcp.http_app())
     # OAuth endpoints must be public; all MCP HTTP requests require access token.
     return Starlette(routes=[Route('/health',health),*oauth.routes(),
         Mount('/',app=BearerGate(mcp_app,oauth))],lifespan=mcp_app.lifespan)
