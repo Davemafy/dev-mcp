@@ -41,8 +41,32 @@ def test_browser_failure_is_reported_not_hidden():
 
 def test_setup_happens_inside_workspace():
     class FakeMachine:
+        def __init__(self):
+            self.calls = []
         def run(self, workspace_id, command, timeout_seconds):
             assert workspace_id == "signed-id"
+            self.calls.append(command)
+            if len(self.calls) == 1:
+                assert "playwright" in command
+                return {"exit_code": 1, "stdout": "", "stderr": "not installed"}
             assert "playwright" in command and "swap" in command
             return {"exit_code": 0, "stdout": "", "stderr": ""}
-    assert browser_setup(FakeMachine(), "signed-id")["installed"]
+    machine = FakeMachine()
+    result = browser_setup(machine, "signed-id")
+    assert result["installed"] and not result["reused"]
+    assert len(machine.calls) == 2
+
+
+def test_setup_skips_expensive_installation_when_browser_works():
+    class FakeMachine:
+        def __init__(self):
+            self.calls = 0
+        def run(self, workspace_id, command, timeout_seconds):
+            assert "chromium.launch" in command
+            self.calls += 1
+            return {"exit_code": 0, "stdout": "", "stderr": ""}
+    machine = FakeMachine()
+    assert browser_setup(machine, "signed-id") == {
+        "installed": True, "reused": True, "exit_code": 0
+    }
+    assert machine.calls == 1
