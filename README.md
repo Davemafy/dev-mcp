@@ -137,3 +137,48 @@ volume, verifies a persistent file after restart, and verifies the gateway
 UID is 10001. Do **not** set \`RAILWAY_RUN_UID=10001\` as an overriding
 Railway deployment variable; doing so would prevent the one-time mount
 ownership setup. Existing Railway auth secrets should remain unchanged.
+
+
+## Portable gateway (Vercel, Railway, or any Python ASGI host)
+
+The gateway runs on any ASGI-compatible host. It does not require a specific
+execution provider. To deploy to Vercel use the root `app.py` ASGI entrypoint.
+The existing Docker/Railway service remains compatible and unchanged by default.
+
+**Vercel preparation**
+
+1. Import this repository as a Vercel project using the **Python** runtime.
+2. Set `PUBLIC_BASE_URL=https://<your-production-domain>` (no `/mcp`).
+3. Set `OWNER_PASSWORD` (at least 20 characters) and
+   `TOKEN_SIGNING_SECRET` (at least 32 characters), both stable across deploys.
+4. Provision a managed **TLS Redis** instance and set
+   `AUTH_REDIS_URL=rediss://...`. Stateless instances share single-use OAuth
+   authorization and refresh-token replay protection and login attempt limits.
+5. Set `WORKSPACE_BACKEND=e2b` and `E2B_API_KEY`. Do not place secrets in Git.
+6. Deploy, verify `/health`, then connect your MCP client using `/mcp`.
+   OAuth discovery remains under `/.well-known/` on the same origin.
+
+The root `app.py` enables `STATELESS_GATEWAY=1`. Redis and explicit stable
+credentials are **required** in this mode; startup fails closed otherwise.
+For local single-instance operation, `main.py` still uses SQLite by default.
+
+**Provider switching**
+
+- `WORKSPACE_BACKEND=e2b` uses the existing disposable E2B machines.
+- `WORKSPACE_BACKEND=worker` delegates to an owner-operated, independently
+  sandboxed HTTPS worker with `WORKER_API_URL` and a 32+ character
+  `WORKER_API_TOKEN`. The gateway adapter speaks POST `/v1/execute` with
+  JSON `{"action":"create","args":{}}`; the worker must return a
+  `{"worker_id":"..."}`. Other supported actions are `status`, `close`,
+  `read`, `write`, `list`, `run`, `start`, `processes`, `stop`,
+  `preview`. Workspace handles are signed and scoped to the worker backend.
+
+**Security boundary:** the HTTP worker contract is an adapter, not an
+automatically installed Vultr service. It must run with least privilege behind
+HTTPS, with process and filesystem isolation and without sensitive host access.
+Never point it at the production Refit machine or accept arbitrary tenants.
+Remote job execution must not occur in the Vercel gateway itself.
+
+**Deployment status:** GitHub code and local unit tests do not prove a working
+Vercel deployment. Verify production OAuth discovery, MCP initialization and
+real backend execution before switching clients away from Railway.
