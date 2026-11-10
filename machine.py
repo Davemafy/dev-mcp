@@ -207,7 +207,7 @@ class Machine:
             raw = base64.b64decode(encoded, validate=True)
         except (ValueError, base64.binascii.Error):
             raise ValueError("Invalid capture encoding") from None
-        if len(raw) > 750_000 or not raw.startswith(b"\\xff\\xd8"):
+        if len(raw) > 750_000 or not raw.startswith(bytes.fromhex("ffd8")):
             raise ValueError("Invalid or excessive JPEG capture")
         return raw
 
