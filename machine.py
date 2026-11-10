@@ -3,6 +3,8 @@ from __future__ import annotations
 
 import os
 import hashlib
+import base64
+import shlex
 from pathlib import PurePosixPath
 from typing import Callable
 from auth import OAuth, OAuthError
@@ -175,6 +177,39 @@ class Machine:
     def stop_process(self,workspace_id: str,pid: int):
         self.connect(workspace_id).commands.kill(int(pid))
         return {'stopped':True,'pid':int(pid)}
+
+    def read_capture(self, workspace_id: str) -> bytes:
+        """Return only the fixed, bounded JPEG created by browser_journey.
+
+        Binary reads are performed inside the signed sandbox. Do not expose
+        arbitrary filesystem paths as MCP image inputs.
+        """
+        code = (
+            "from pathlib import Path;import base64;"
+            "p=Path('/home/user/browser-captures/latest.jpg');"
+            "d=p.read_bytes();"
+            "assert len(d)<=750000,'Capture too large';"
+            "print(base64.b64encode(d).decode())"
+        )
+        sandbox = self.connect(workspace_id)
+        try:
+            result = sandbox.commands.run(
+                "python3 -c " + shlex.quote(code), timeout=20, cwd=HOME
+            )
+        except Exception:
+            raise RuntimeError("Browser capture unavailable.") from None
+        if getattr(result, "exit_code", 1) != 0:
+            raise RuntimeError("Browser capture missing; run browser_journey first.")
+        encoded = str(getattr(result, "stdout", "") or "").strip()
+        if len(encoded) > 1_100_000:
+            raise ValueError("Capture exceeds encoded output limit")
+        try:
+            raw = base64.b64decode(encoded, validate=True)
+        except (ValueError, base64.binascii.Error):
+            raise ValueError("Invalid capture encoding") from None
+        if len(raw) > 750_000 or not raw.startswith(b"\\xff\\xd8"):
+            raise ValueError("Invalid or excessive JPEG capture")
+        return raw
 
     def preview_url(self,workspace_id: str,port: int):
         port=int(port)
