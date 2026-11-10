@@ -105,7 +105,7 @@ def prepare(machine, workspace_id: str, expected_fingerprint: str) -> dict:
         "authorization_minutes": 300,
         "host_setup": (
             "On the Vultr console, run: "
-            "cd /opt/refit-app && git pull --ff-only origin main && "
+            "cd /opt/refit-app && "
             "bash deploy/setup-devmcp-host-access.sh " + shlex.quote(public)
         ),
         "note": "No private key leaves E2B. Existing server forced-command restrictions apply."
