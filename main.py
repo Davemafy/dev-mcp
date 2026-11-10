@@ -8,6 +8,7 @@ from host_access import HostAccess
 import workspace_host_access
 from browser import browser_setup as setup_browser, browser_visit as visit_browser
 from capabilities import install_capabilities, gateway_lifespan
+from vm_link import register_vm_tools
 
 
 def build_app(machine_factory=None):
@@ -123,6 +124,7 @@ def build_app(machine_factory=None):
         return visit_browser(machine, workspace_id, url, action, selector, value)
 
     extra_routes, jobs, feature_status = install_capabilities(mcp, machine, oauth)
+    vm_routes, vm_link = register_vm_tools(mcp, oauth)
 
     async def health(request: Request):
         return JSONResponse({
@@ -138,12 +140,13 @@ def build_app(machine_factory=None):
             'host_access_configured': host_access.configured(),
             'host_access_volume_mounted': os.path.ismount('/data'),
             'features': feature_status,
+            'vm_link': vm_link.status(),
         })
 
     mcp_app=(mcp.http_app(stateless_http=True) if os.getenv('STATELESS_GATEWAY') == '1' else mcp.http_app())
     # OAuth endpoints must be public; all MCP HTTP requests require access token.
     return Starlette(routes=[Route('/health',health),*oauth.routes(),
-        *extra_routes, Mount('/',app=BearerGate(mcp_app,oauth))],
+        *extra_routes, *vm_routes, Mount('/',app=BearerGate(mcp_app,oauth))],
         lifespan=gateway_lifespan(mcp_app, jobs))
 
 
