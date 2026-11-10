@@ -50,6 +50,8 @@ def resolve_owner_credentials(db_path: str) -> tuple[str, str]:
     """
     configured_password = os.getenv('OWNER_PASSWORD', '')
     configured_secret = os.getenv('TOKEN_SIGNING_SECRET', '')
+    if os.getenv('STATELESS_GATEWAY') == '1' and (len(configured_password) < 20 or len(configured_secret) < 32):
+        raise RuntimeError('Stateless gateway requires stable OWNER_PASSWORD and TOKEN_SIGNING_SECRET')
     password = configured_password if len(configured_password) >= 20 else ''
     secret = configured_secret if len(configured_secret) >= 32 else ''
 
@@ -137,6 +139,8 @@ class Settings:
                 'https://YOUR-DOMAIN.up.railway.app (no path or placeholder). '
                 'Alternatively configure a Railway public domain so RAILWAY_PUBLIC_DOMAIN is present.'
             )
+        if os.getenv('STATELESS_GATEWAY') == '1' and not os.getenv('AUTH_REDIS_URL'):
+            raise RuntimeError('Shared Redis state is required for stateless OAuth')
         db_path = os.getenv('AUTH_DB_PATH', '/tmp/dev-mcp-auth.sqlite')
         password, secret = resolve_owner_credentials(db_path)
         return cls(base, password, secret, db_path)
@@ -149,14 +153,21 @@ class OAuth:
         self.cfg = cfg
         self.lock = threading.Lock()
         self.attempts: dict[str, list[float]] = {}
-        Path(cfg.db_path).parent.mkdir(parents=True, exist_ok=True)
-        with self._connect() as db:
-            db.execute('CREATE TABLE IF NOT EXISTS used_tokens (jti TEXT PRIMARY KEY, used_at INTEGER NOT NULL)')
+        self.shared_state = None
+        if os.getenv('AUTH_REDIS_URL'):
+            from shared_state import SharedState
+            self.shared_state = SharedState(os.environ['AUTH_REDIS_URL'])
+        else:
+            Path(cfg.db_path).parent.mkdir(parents=True, exist_ok=True)
+            with self._connect() as db:
+                db.execute('CREATE TABLE IF NOT EXISTS used_tokens (jti TEXT PRIMARY KEY, used_at INTEGER NOT NULL)')
 
     def _connect(self):
         return sqlite3.connect(self.cfg.db_path, timeout=5.0)
 
     def _mark_once(self, jti: str) -> bool:
+        if self.shared_state is not None:
+            return self.shared_state.claim_once(jti)
         try:
             with self.lock, self._connect() as db:
                 db.execute('DELETE FROM used_tokens WHERE used_at < ?', (int(time.time())-35*86400,))
@@ -267,12 +278,16 @@ class OAuth:
             token = fields.get('request',[''])[0]
             pw = fields.get('password',[''])[0]
             flow = self.verify(token, 'auth_request')
-            now = time.monotonic()
-            with self.lock:
-                recent = [x for x in self.attempts.get(ip,[]) if now - x < 300]
-                recent.append(now)
-                self.attempts[ip] = recent
-            if len(recent) > 10:
+            if self.shared_state is not None:
+                allowed = self.shared_state.check_login_budget(ip)
+            else:
+                now = time.monotonic()
+                with self.lock:
+                    recent = [x for x in self.attempts.get(ip,[]) if now - x < 300]
+                    recent.append(now)
+                    self.attempts[ip] = recent
+                allowed = len(recent) <= 10
+            if not allowed:
                 return HTMLResponse('Too many login attempts',status_code=429)
             if not secrets.compare_digest(pw, self.cfg.password):
                 return HTMLResponse('Incorrect password',status_code=401)
