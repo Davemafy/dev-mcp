@@ -50,6 +50,8 @@ def resolve_owner_credentials(db_path: str) -> tuple[str, str]:
     """
     configured_password = os.getenv('OWNER_PASSWORD', '')
     configured_secret = os.getenv('TOKEN_SIGNING_SECRET', '')
+    if os.getenv('STATELESS_GATEWAY') == '1' and (len(configured_password) < 20 or len(configured_secret) < 32):
+        raise RuntimeError('Stateless gateway requires stable OWNER_PASSWORD and TOKEN_SIGNING_SECRET')
     password = configured_password if len(configured_password) >= 20 else ''
     secret = configured_secret if len(configured_secret) >= 32 else ''
 
