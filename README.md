@@ -184,3 +184,19 @@ Vercel deployment. Verify production OAuth discovery, MCP initialization and
 real backend execution before switching clients away from Railway.
 
 For a gateway SSH timeout, see [workspace SSH fallback](docs/workspace-host-access.md).
+
+## Persistent Vultr worker (outbound-only)
+
+DevMCP can operate both disposable E2B machines and a persistent, resource-limited
+Vultr development container **without** a second model, expiring Refit SSH keys,
+or a public VM port. The Railway gateway queues owner-authenticated VM commands
+on its existing mounted `/data` volume; a dedicated worker on Vultr pulls
+them over authenticated HTTPS.
+
+Enable by setting `VM_WORKER_TOKEN` in Railway and installing the Docker worker
+once on Vultr. See [complete setup and acceptance checks](docs/persistent-vultr-worker.md).
+When disconnected, VM commands are rejected rather than queued for surprise execution.
+Existing E2B tools and Refit host restrictions remain unchanged.
+
+The VM code and queue can be tested locally, but the connection is **not live**
+until the VM container and Railway token are installed and a live round-trip succeeds.
