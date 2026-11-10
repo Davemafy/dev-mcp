@@ -137,6 +137,8 @@ class Settings:
                 'https://YOUR-DOMAIN.up.railway.app (no path or placeholder). '
                 'Alternatively configure a Railway public domain so RAILWAY_PUBLIC_DOMAIN is present.'
             )
+        if os.getenv('STATELESS_GATEWAY') == '1' and not os.getenv('AUTH_REDIS_URL'):
+            raise RuntimeError('Shared Redis state is required for stateless OAuth')
         db_path = os.getenv('AUTH_DB_PATH', '/tmp/dev-mcp-auth.sqlite')
         password, secret = resolve_owner_credentials(db_path)
         return cls(base, password, secret, db_path)
