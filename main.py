@@ -5,6 +5,7 @@ import os
 from auth import Settings, OAuth, BearerGate
 from backends import build_machine
 from host_access import HostAccess
+import workspace_host_access
 from browser import browser_setup as setup_browser, browser_visit as visit_browser
 from capabilities import install_capabilities, gateway_lifespan
 
@@ -92,6 +93,23 @@ def build_app(machine_factory=None):
     def host_access_deploy(revision: str) -> dict:
         """Deploy a 40-character Git SHA through the server-side restricted forced command."""
         return host_access.deploy(revision)
+
+    @mcp.tool()
+    def workspace_host_prepare(workspace_id: str, expected_fingerprint: str) -> dict:
+        """Use a signed E2B workspace to verify Vultr's SSH host key and create a short-lived
+        SSH client identity. Returns ONLY the public key and restricted setup command.
+        """
+        return workspace_host_access.prepare(machine, workspace_id, expected_fingerprint)
+
+    @mcp.tool()
+    def workspace_host_status(workspace_id: str) -> dict:
+        """Read restricted Refit VM status over E2B SSH after owner authorization."""
+        return workspace_host_access.status(machine, workspace_id)
+
+    @mcp.tool()
+    def workspace_host_deploy(workspace_id: str, revision: str) -> dict:
+        """Deploy only a pinned Refit commit SHA via the host's restricted SSH command."""
+        return workspace_host_access.deploy(machine, workspace_id, revision)
 
     @mcp.tool()
     def browser_setup(workspace_id: str) -> dict:
