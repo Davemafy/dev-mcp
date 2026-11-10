@@ -238,6 +238,14 @@ class VmLink:
                         (time.time(),),
                     )
                 value = self.claim()
+            elif request.url.path.endswith("/heartbeat"):
+                with self._db() as conn:
+                    conn.execute(
+                        "INSERT INTO vm_heartbeat(worker,seen) VALUES('primary',?) "
+                        "ON CONFLICT(worker) DO UPDATE SET seen=excluded.seen",
+                        (time.time(),),
+                    )
+                value = {"ok": True}
             elif request.url.path.endswith("/report"):
                 data = await request.json()
                 if not isinstance(data, dict):
@@ -330,4 +338,5 @@ def register_vm_tools(mcp, oauth):
     return [
         Route("/internal/vm/claim", link.worker_api, methods=["POST"]),
         Route("/internal/vm/report", link.worker_api, methods=["POST"]),
+        Route("/internal/vm/heartbeat", link.worker_api, methods=["POST"]),
     ], link
