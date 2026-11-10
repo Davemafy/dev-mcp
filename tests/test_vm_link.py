@@ -24,7 +24,12 @@ class OAuthStub:
 def link(monkeypatch, tmp_path):
     monkeypatch.setenv("VM_WORKER_TOKEN", "v" * 40)
     monkeypatch.delenv("STATELESS_GATEWAY", raising=False)
-    return vm_link.VmLink(OAuthStub(), test_db=str(tmp_path / "tasks.sqlite"))
+    worker = vm_link.VmLink(OAuthStub(), test_db=str(tmp_path / "tasks.sqlite"))
+    import time
+    with worker._db() as conn:
+        conn.execute("INSERT INTO vm_heartbeat(worker,seen) VALUES('primary',?)",
+                     (time.time(),))
+    return worker
 
 
 def test_unconfigured_worker_remains_disabled(monkeypatch, tmp_path):
@@ -112,3 +117,18 @@ def test_worker_workspace_ids_and_overlong_command(tmp_path, monkeypatch):
         vm_worker._root("../etc")
     with pytest.raises(ValueError):
         vm_worker._command(tmp_path, "x"*10001)
+
+def test_queue_refuses_offline_commands_and_allows_cancel(link):
+    import time
+    with link._db() as conn:
+        conn.execute("DELETE FROM vm_heartbeat")
+    assert link.submit("run", {"command": "echo hi"}, wait_seconds=0)["queued"] is False
+    with link._db() as conn:
+        count = conn.execute("SELECT COUNT(*) FROM vm_tasks").fetchone()[0]
+        conn.execute("INSERT INTO vm_heartbeat(worker,seen) VALUES('primary',?)",
+                     (time.time(),))
+    assert count == 0
+    job = link.submit("run", {"command": "echo hi"}, wait_seconds=0)["job_id"]
+    assert link.cancel(job)["cancelled"] is True
+    assert link.claim()["task"] is None
+    assert link.job(job)["state"] == "cancelled"
