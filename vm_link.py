@@ -127,6 +127,8 @@ class VmLink:
         self._require()
         if action not in _ACTIONS or not isinstance(args or {}, dict):
             raise ValueError("Unsupported VM operation")
+        if not self.status()["worker_connected"]:
+            return {"queued": False, "error": "VM worker offline; no command was queued"}
         args = args or {}
         payload = json.dumps(args, separators=(",", ":"))
         if len(payload.encode()) > MAX_ARGS:
@@ -168,6 +170,19 @@ class VmLink:
             return {"job_id": job_id, "state": "unknown",
                     "message": "Execution result unconfirmed; no automatic retry."}
         return {"job_id": job_id, "state": state, "result": result}
+
+    def cancel(self, job_id):
+        self._require()
+        if not isinstance(job_id, str) or not _VM_ID.fullmatch(job_id):
+            raise ValueError("Invalid job ID")
+        with self._db() as connection:
+            cursor = connection.execute(
+                "UPDATE vm_tasks SET state='cancelled',finished=? "
+                "WHERE id=? AND state='queued'",
+                (time.time(), job_id),
+            )
+        return {"cancelled": cursor.rowcount == 1,
+                "message": "Running tasks cannot be safely cancelled by this queue."}
 
     def command(self, action, signed=None, **kwargs):
         if signed is not None:
@@ -306,6 +321,11 @@ def register_vm_tools(mcp, oauth):
     def vm_job_status(job_id: str) -> dict:
         """Read a queued VM operation receipt without repeating side effects."""
         return link.job(job_id)
+
+    @mcp.tool()
+    def vm_job_cancel(job_id: str) -> dict:
+        """Cancel a VM operation that has not yet been claimed; never silently interrupt running work."""
+        return link.cancel(job_id)
 
     return [
         Route("/internal/vm/claim", link.worker_api, methods=["POST"]),
