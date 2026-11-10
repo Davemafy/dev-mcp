@@ -151,9 +151,14 @@ class OAuth:
         self.cfg = cfg
         self.lock = threading.Lock()
         self.attempts: dict[str, list[float]] = {}
-        Path(cfg.db_path).parent.mkdir(parents=True, exist_ok=True)
-        with self._connect() as db:
-            db.execute('CREATE TABLE IF NOT EXISTS used_tokens (jti TEXT PRIMARY KEY, used_at INTEGER NOT NULL)')
+        self.shared_state = None
+        if os.getenv('AUTH_REDIS_URL'):
+            from shared_state import SharedState
+            self.shared_state = SharedState(os.environ['AUTH_REDIS_URL'])
+        else:
+            Path(cfg.db_path).parent.mkdir(parents=True, exist_ok=True)
+            with self._connect() as db:
+                db.execute('CREATE TABLE IF NOT EXISTS used_tokens (jti TEXT PRIMARY KEY, used_at INTEGER NOT NULL)')
 
     def _connect(self):
         return sqlite3.connect(self.cfg.db_path, timeout=5.0)
