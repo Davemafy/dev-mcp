@@ -6,6 +6,7 @@ isolated, unprivileged development hosts reachable through owner-managed HTTPS.
 from __future__ import annotations
 
 import os
+from threading import Lock
 from urllib.parse import urlsplit
 
 import httpx
@@ -24,19 +25,33 @@ class RemoteWorkerMachine:
             raise RuntimeError("WORKER_API_TOKEN must be at least 32 characters")
         self.e2b_configured = False
         self.timeout = int(os.getenv("WORKER_TIMEOUT_SECONDS", "120"))
+        self._client = None
+        self._client_lock = Lock()
+
+    def _http(self):
+        # Reuse HTTPS connections across tool calls on a warm gateway.
+        # Mutating actions are NOT retried automatically after transport failures.
+        if self._client is None:
+            with self._client_lock:
+                if self._client is None:
+                    self._client = httpx.Client(
+                        timeout=min(self.timeout, 240),
+                        follow_redirects=False,
+                        limits=httpx.Limits(max_connections=8, max_keepalive_connections=4),
+                    )
+        return self._client
 
     def _call(self, action, **args):
-        with httpx.Client(timeout=min(self.timeout, 240), follow_redirects=False) as client:
-            response = client.post(
-                self.base_url + "/v1/execute",
-                headers={"Authorization": "Bearer " + self.token},
-                json={"action": action, "args": args},
-            )
-            response.raise_for_status()
-            result = response.json()
-            if not isinstance(result, dict):
-                raise ValueError("Invalid worker response")
-            return result
+        response = self._http().post(
+            self.base_url + "/v1/execute",
+            headers={"Authorization": "Bearer " + self.token},
+            json={"action": action, "args": args},
+        )
+        response.raise_for_status()
+        result = response.json()
+        if not isinstance(result, dict):
+            raise ValueError("Invalid worker response")
+        return result
 
     def _workspace(self, handle):
         claims = self.oauth.verify(handle, "workspace")
