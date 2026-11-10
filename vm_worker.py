@@ -142,7 +142,15 @@ def execute(action, args):
             data = args.get("content")
             if not isinstance(data, str) or len(data.encode()) > 500000:
                 raise ValueError("File content exceeds 500 KB")
-            path.parent.mkdir(parents=True, exist_ok=True)
+            # Give the unprivileged command user access to new nested dirs.
+            missing = []
+            parent = path.parent
+            while parent != root and not parent.exists():
+                missing.append(parent)
+                parent = parent.parent
+            for directory in reversed(missing):
+                directory.mkdir(mode=0o700)
+                os.chown(directory, UID, UID)
             path.write_text(data, encoding="utf-8")
             os.chown(path, UID, UID)
             return {"path": str(path.relative_to(root)), "bytes": len(data.encode())}
