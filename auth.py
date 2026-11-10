@@ -276,12 +276,16 @@ class OAuth:
             token = fields.get('request',[''])[0]
             pw = fields.get('password',[''])[0]
             flow = self.verify(token, 'auth_request')
-            now = time.monotonic()
-            with self.lock:
-                recent = [x for x in self.attempts.get(ip,[]) if now - x < 300]
-                recent.append(now)
-                self.attempts[ip] = recent
-            if len(recent) > 10:
+            if self.shared_state is not None:
+                allowed = self.shared_state.check_login_budget(ip)
+            else:
+                now = time.monotonic()
+                with self.lock:
+                    recent = [x for x in self.attempts.get(ip,[]) if now - x < 300]
+                    recent.append(now)
+                    self.attempts[ip] = recent
+                allowed = len(recent) <= 10
+            if not allowed:
                 return HTMLResponse('Too many login attempts',status_code=429)
             if not secrets.compare_digest(pw, self.cfg.password):
                 return HTMLResponse('Incorrect password',status_code=401)
