@@ -71,3 +71,21 @@ def test_serverless_requires_durable_auth(monkeypatch):
     monkeypatch.setenv("PUBLIC_BASE_URL", "https://devmcp.example")
     with pytest.raises(RuntimeError, match="Shared Redis"):
         Settings.from_env()
+
+
+def test_https_worker_reuses_connection_pool(monkeypatch, oauth):
+    monkeypatch.setenv("WORKER_API_URL", "https://worker.example")
+    monkeypatch.setenv("WORKER_API_TOKEN", "x" * 40)
+    created = []
+    class FakeClient:
+        def __init__(self, **kwargs):
+            created.append(kwargs)
+        def post(self, url, headers, json):
+            return SimpleNamespace(raise_for_status=lambda: None,
+                                   json=lambda: {"worker_id": "worker-ok"})
+    monkeypatch.setattr("backends.httpx.Client", FakeClient)
+    worker = RemoteWorkerMachine(oauth)
+    worker.create()
+    worker.create()
+    assert len(created) == 1
+    assert created[0]["follow_redirects"] is False
