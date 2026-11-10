@@ -94,7 +94,7 @@ jobs:
           docker volume create devmcp-vm-ci
           trap 'docker volume rm -f devmcp-vm-ci >/dev/null 2>&1 || true' EXIT
           docker run --rm --name devmcp-vm-test \
-            --cap-drop=ALL --cap-add=SETUID --cap-add=SETGID --cap-add=CHOWN \
+            --cap-drop=ALL --cap-add=SETUID --cap-add=SETGID --cap-add=CHOWN --cap-add=DAC_OVERRIDE \
             --security-opt=no-new-privileges --read-only \
             --tmpfs /tmp:rw,nosuid,nodev,size=128m \
             -v devmcp-vm-ci:/workspaces \
