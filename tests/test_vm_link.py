@@ -73,6 +73,7 @@ def test_queue_status_and_worker_endpoint_auth(link):
     app = Starlette(routes=[
         Route("/internal/vm/claim", link.worker_api, methods=["POST"]),
         Route("/internal/vm/report", link.worker_api, methods=["POST"]),
+        Route("/internal/vm/heartbeat", link.worker_api, methods=["POST"]),
     ])
     async def run():
         async with httpx.AsyncClient(
@@ -87,6 +88,12 @@ def test_queue_status_and_worker_endpoint_auth(link):
             )
             assert authorized.status_code == 200
             assert authorized.json()["task"] is None
+            heartbeat = await client.post(
+                "/internal/vm/heartbeat", json={},
+                headers={"Authorization": "Bearer " + "v"*40}
+            )
+            assert heartbeat.status_code == 200
+            assert heartbeat.json()["ok"]
     asyncio.run(run())
     assert link.status()["worker_connected"]
 
@@ -104,7 +111,9 @@ def test_worker_rejects_escape_and_keeps_control_token_private(monkeypatch, tmp_
     with pytest.raises(ValueError, match="escapes"):
         vm_worker._file(root, "link/passwd")
 
-    monkeypatch.setattr(vm_worker, "_drop_privileges", lambda: None)
+    import os
+    monkeypatch.setattr(vm_worker, "UID", os.geteuid())
+    monkeypatch.setattr(vm_worker, "GID", os.getegid())
     monkeypatch.setenv("VM_WORKER_TOKEN", "secret-not-for-child")
     proc = vm_worker.run_command(root, "python3 -c 'import os;print(os.getenv(\"VM_WORKER_TOKEN\",\"not-present\"))'")
     assert proc["exit_code"] == 0
