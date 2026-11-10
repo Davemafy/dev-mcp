@@ -18,6 +18,7 @@ services:
       - SETUID
       - SETGID
       - CHOWN
+      - DAC_OVERRIDE
     security_opt:
       - no-new-privileges:true
     cpus: 1.0
