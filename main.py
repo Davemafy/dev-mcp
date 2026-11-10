@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import os
 from auth import Settings, OAuth, BearerGate
-from machine import Machine
+from backends import build_machine
 from host_access import HostAccess
 from browser import browser_setup as setup_browser, browser_visit as visit_browser
 
@@ -17,7 +17,7 @@ def build_app(machine_factory=None):
 
     settings=Settings.from_env()
     oauth=OAuth(settings)
-    machine=Machine(oauth,sandbox_factory=machine_factory)
+    machine=build_machine(oauth,sandbox_factory=machine_factory)
     host_access=HostAccess.from_env()
     mcp=FastMCP('dev-mcp · E2B cloud machine')
 
@@ -107,10 +107,10 @@ def build_app(machine_factory=None):
         return JSONResponse({
             'ready': True,
             'service': 'dev-mcp',
-            'machine': 'e2b',
+            'machine': os.getenv('WORKSPACE_BACKEND', 'e2b'),
             'transport': 'streamable-http',
             'e2b_configured': machine.e2b_configured,
-            'workspace_available': machine.e2b_configured,
+            'workspace_available': machine.e2b_configured or os.getenv('WORKSPACE_BACKEND', 'e2b') == 'worker',
             'workspace_recovery_available': machine.e2b_configured,
             'workspace_recovery_version': 1,
             'host_access_version': 1,
@@ -118,7 +118,7 @@ def build_app(machine_factory=None):
             'host_access_volume_mounted': os.path.ismount('/data'),
         })
 
-    mcp_app=mcp.http_app()
+    mcp_app=mcp.http_app(stateless_http=os.getenv('STATELESS_GATEWAY', '') == '1')
     # OAuth endpoints must be public; all MCP HTTP requests require access token.
     return Starlette(routes=[Route('/health',health),*oauth.routes(),
         Mount('/',app=BearerGate(mcp_app,oauth))],lifespan=mcp_app.lifespan)
