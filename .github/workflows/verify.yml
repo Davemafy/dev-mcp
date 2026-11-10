@@ -24,7 +24,7 @@ jobs:
           python -m pip install --upgrade pip
           python -m pip install -r requirements.txt pytest httpx
       - name: Compile Python modules
-        run: python -m compileall -q main.py auth.py machine.py browser.py host_access.py workspace_host_access.py entrypoint.py tests/
+        run: python -m compileall -q main.py auth.py machine.py browser.py host_access.py workspace_host_access.py entrypoint.py capabilities.py vm_link.py vm_worker.py tests/
       - name: Run local unit and protocol simulations
         run: pytest -q
       - name: Instantiate actual FastMCP HTTP application
@@ -87,6 +87,19 @@ jobs:
           curl --fail --silent --show-error http://127.0.0.1:18099/health | grep -q '"e2b_configured":false'
           docker logs dev-mcp-ci | grep -q 'Initial owner login password'
           echo "Railway Docker image boots, provisions OAuth login, and explains missing E2B configuration."
+      - name: Build and smoke-test isolated Vultr worker
+        run: |
+          set -euo pipefail
+          docker build -f Dockerfile.vm-worker -t devmcp-vm-worker:ci .
+          docker volume create devmcp-vm-ci
+          trap 'docker volume rm -f devmcp-vm-ci >/dev/null 2>&1 || true' EXIT
+          docker run --rm --name devmcp-vm-test \
+            --cap-drop=ALL --cap-add=SETUID --cap-add=SETGID --cap-add=CHOWN \
+            --security-opt=no-new-privileges --read-only \
+            --tmpfs /tmp:rw,nosuid,nodev,size=128m \
+            -v devmcp-vm-ci:/workspaces \
+            --entrypoint python3 devmcp-vm-worker:ci -c 'import vm_worker as w; x=w.execute("create",{}); y=w.execute("run",{"worker_id":x["worker_id"],"command":"id -u"}); assert y["exit_code"]==0 and y["stdout"].strip()=="10001", y; assert w.execute("status",{"worker_id":x["worker_id"]})["ready"]; print("VM worker sandbox UID isolation verified")'
+
       - name: Verify mounted volume survives restart without running app as root
         run: |
           set -euo pipefail
