@@ -182,3 +182,52 @@ Remote job execution must not occur in the Vercel gateway itself.
 **Deployment status:** GitHub code and local unit tests do not prove a working
 Vercel deployment. Verify production OAuth discovery, MCP initialization and
 real backend execution before switching clients away from Railway.
+
+
+## Faster browser and remote-worker development (November 2026)
+
+The default E2B gateway now exposes two additional authenticated MCP tools:
+
+- `browser_journey`: executes up to 15 validated Playwright steps in **one**
+  sandbox command, returning a mobile/desktop screenshot path, console errors,
+  network failures and actual assertion evidence. Run `browser_setup` first.
+- `browser_capture`: returns the latest browser-journey JPEG as an MCP image,
+  with a fixed sandbox path and a 750 KB limit.
+
+`browser_setup` first probes whether Chromium already launches inside that
+workspace. Successful probes skip repeated package installation. This speeds
+up repeat invocations; first-time provisioning is still required.
+
+**Stateful E2B gateway:** `LIVE_BROWSER_ENABLED=1` is the default. It registers
+`browser_stream_start/action/status/stop`, `browser_observe` (DOM delta via
+`base_id`), and `browser_adaptive_run` (bounded retries via `repair_id`).
+These reuse one live browser process across interactions instead of launching
+Chromium for each action. The owner-only browser viewing route uses a signed
+time-limited ticket. Set `LIVE_BROWSER_ENABLED=0` to keep the minimal toolset.
+
+**Desktop:** `DESKTOP_TOOLS_ENABLED=1` (off by default) makes isolated E2B
+X11/noVNC desktop tools available and adds protected viewer/WebSocket routes.
+It requires a stateful E2B gateway and `LIVE_BROWSER_ENABLED=1`. Run
+`desktop_setup` inside your sandbox before starting its desktop. Never
+connect the desktop proxy to an unrestricted host desktop.
+
+**Durable agent jobs:** `AGENT_JOBS_ENABLED=1` (off by default) registers
+bounded job tools. It *requires* a stateful E2B gateway, a genuinely mounted
+`/data` volume, and an explicitly configured inference endpoint. Shell and
+browser interactions require separate per-job permissions; neither is enabled
+by default. The model-driven end-to-end path still needs deployed acceptance.
+
+**Serverless Vercel gateway:** Live browser viewers, desktop WebSockets and
+background job loops are intentionally disabled in `STATELESS_GATEWAY=1`.
+`browser_journey` remains available with E2B, since each call is self-contained.
+Move persistent workloads to independent worker processes rather than expecting
+Vercel functions to keep them alive.
+
+**Remote HTTPS worker:** `WORKSPACE_BACKEND=worker` keeps an HTTP connection
+pool per warm gateway instance. Connections are reused but mutating tool actions
+are *not* transparently retried, to avoid duplicating uncertain side effects.
+
+**Verification:** local test suite plus real E2B Chromium acceptance on a
+controlled mobile page: navigate → click → assert changed text → screenshot.
+No claim is made that live Vercel, real desktop view or durable agent jobs have
+passed production acceptance.
