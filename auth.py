@@ -164,6 +164,8 @@ class OAuth:
         return sqlite3.connect(self.cfg.db_path, timeout=5.0)
 
     def _mark_once(self, jti: str) -> bool:
+        if self.shared_state is not None:
+            return self.shared_state.claim_once(jti)
         try:
             with self.lock, self._connect() as db:
                 db.execute('DELETE FROM used_tokens WHERE used_at < ?', (int(time.time())-35*86400,))
