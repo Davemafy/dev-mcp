@@ -21,10 +21,12 @@ services:
       - DAC_OVERRIDE
     security_opt:
       - no-new-privileges:true
-    cpus: 1.0
-    mem_limit: 1024m
-    memswap_limit: 1024m
-    pids_limit: 128
+    # Keep conservative defaults while sharing this host with Refit.
+    # Optional capacity overrides require a deliberate worker-only redeploy.
+    cpus: ${DEVMCP_VM_CPUS:-1.0}
+    mem_limit: ${DEVMCP_VM_RAM:-1024m}
+    memswap_limit: ${DEVMCP_VM_RAM:-1024m}
+    pids_limit: ${DEVMCP_VM_PIDS:-128}
     init: true
     logging:
       driver: json-file
