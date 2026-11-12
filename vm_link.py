@@ -20,7 +20,7 @@ from starlette.routing import Route
 
 _ACTIONS = frozenset({
     "create", "recover", "status", "close", "read", "write", "list",
-    "run", "start", "processes", "stop",
+    "run", "start", "processes", "stop", "artifact_read",
 })
 _VM_ID = re.compile(r"^[0-9a-f]{32}$")
 MAX_ARGS = 550_000
@@ -309,6 +309,17 @@ def register_vm_tools(mcp, oauth):
     def vm_list_files(workspace_id: str, path: str = ".") -> dict:
         """List files without leaving the isolated VM workspace."""
         return link.command("list", workspace_id, path=path)
+
+    @mcp.tool()
+    def vm_artifact_read(workspace_id: str, path: str,
+                         offset: int = 0, chunk_size: int = 24000) -> dict:
+        """Read a bounded base64 chunk of an image, model, or ZIP within a VM workspace.
+
+        For large files, advance offset using next_offset until complete.
+        Files stay scoped to the signed workspace and are never publicly hosted.
+        """
+        return link.command("artifact_read", workspace_id, path=path,
+                            offset=offset, chunk_size=chunk_size)
 
     @mcp.tool()
     def vm_start_process(workspace_id: str, command: str) -> dict:
