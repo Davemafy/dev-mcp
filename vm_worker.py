@@ -6,6 +6,7 @@ environment; the worker's Railway token remains in the control process.
 """
 from __future__ import annotations
 
+import base64
 import json
 import os
 from pathlib import Path
@@ -26,7 +27,8 @@ UID = 10001
 GID = 10001
 RUNNING = {}
 SAFE_ENV = {
-    "PATH": "/usr/local/bin:/usr/bin:/bin",
+    "PATH": "/opt/devmcp-python/bin:/usr/local/bin:/usr/bin:/bin",
+    "PLAYWRIGHT_BROWSERS_PATH": "/opt/devmcp-browsers",
     "LANG": "C.UTF-8",
     "PYTHONDONTWRITEBYTECODE": "1",
 }
@@ -165,6 +167,30 @@ def execute(action, args):
             "name": p.name, "type": "directory" if p.is_dir() else "file",
             "size": p.stat().st_size
         } for p in list(path.iterdir())[:100]]}
+    if action == "artifact_read":
+        # Chunked, read-only, owner-authorized binary export. The gateway caps
+        # returned JSON. Access is restricted to the signed workspace tree.
+        path = _file(root, args.get("path"))
+        allowed = {".png", ".jpg", ".jpeg", ".webp", ".glb", ".gltf",
+                   ".blend", ".zip", ".mp4"}
+        if path.suffix.lower() not in allowed or not path.is_file():
+            raise ValueError("Unsupported artifact type")
+        length = path.stat().st_size
+        if length > 64 * 1024 * 1024:
+            raise ValueError("Artifact exceeds 64 MiB retrieval limit")
+        offset = args.get("offset", 0)
+        if type(offset) is not int or not 0 <= offset <= length:
+            raise ValueError("Invalid artifact offset")
+        chunk_size = args.get("chunk_size", 24000)
+        if type(chunk_size) is not int or not 1 <= chunk_size <= 24000:
+            raise ValueError("Invalid artifact chunk size")
+        with path.open("rb") as stream:
+            stream.seek(offset)
+            chunk = stream.read(chunk_size)
+        return {"path": str(path.relative_to(root)), "bytes_total": length,
+                "offset": offset, "next_offset": offset + len(chunk),
+                "complete": offset + len(chunk) >= length,
+                "data_base64": base64.b64encode(chunk).decode("ascii")}
     if action == "run":
         return run_command(root, args.get("command"), args.get("timeout_seconds", 90))
     if action == "start":
