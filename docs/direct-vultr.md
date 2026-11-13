@@ -109,3 +109,29 @@ sudo docker compose -f deploy/vm-worker.compose.yml start devmcp-vm-worker
 
 Neither action removes the workspaces. Do not tear down Railway until HTTPS,
 OAuth, SSH administration and workspace recovery have been verified.
+
+## Nginx HTTPS cutover on the existing VM
+
+The native service runs on localhost:8742. Nginx already owns ports 80 and
+443 for Refit, so it needs an **additional** hostname-specific vhost and
+its own Let's Encrypt certificate.
+
+Run on the existing Vultr console:
+
+\`\`\`bash
+cd /opt/dev-mcp
+git pull --ff-only origin main
+sudo bash deploy/configure-native-nginx.sh devmcp.davemafy.xyz
+\`\`\`
+
+The script preflights native DevMCP, verifies Nginx includes conf.d, refuses to
+overwrite an unrelated config, configures an HTTP-01 challenge site, verifies
+the public ACME challenge route, and obtains a certificate with Certbot
+webroot. It then adds only a new SSL reverse proxy to localhost:8742, tests
+Nginx before reloading, and checks the local and public HTTPS health endpoints.
+It does not modify Refit's server block or reuse Refit's certificate.
+
+If the public challenge check fails, confirm Cloudflare's origin A record and
+temporarily switch this hostname to DNS-only during issuance if necessary.
+Do not stop the legacy worker until OAuth and all four existing workspaces are
+verified through the new endpoint.
