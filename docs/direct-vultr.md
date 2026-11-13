@@ -118,11 +118,11 @@ its own Let's Encrypt certificate.
 
 Run on the existing Vultr console:
 
-\`\`\`bash
+```bash
 cd /opt/dev-mcp
 git pull --ff-only origin main
 sudo bash deploy/configure-native-nginx.sh devmcp.davemafy.xyz
-\`\`\`
+```
 
 The script preflights native DevMCP, verifies Nginx includes conf.d, refuses to
 overwrite an unrelated config, configures an HTTP-01 challenge site, verifies

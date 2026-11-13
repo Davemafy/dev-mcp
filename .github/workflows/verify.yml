@@ -103,7 +103,7 @@ jobs:
       - name: Verify native Vultr systemd deployment (no Docker)
         run: |
           set -euo pipefail
-          bash -n deploy/bootstrap-vultr-native.sh deploy/setup-native-host-ssh.sh
+          bash -n deploy/bootstrap-vultr-native.sh deploy/setup-native-host-ssh.sh deploy/configure-native-nginx.sh
           # CI has no /opt/devmcp-python; substitute the runner's Python only
           # for unit syntax verification. The real path is checked on Vultr.
           if command -v systemd-analyze >/dev/null; then
