@@ -1,0 +1,40 @@
+# Single direct Vultr gateway. No separate worker and no exposed Docker socket.
+# The existing /srv/devmcp-workspaces bind mount is reused; do not delete it.
+services:
+  devmcp-direct:
+    build:
+      context: ..
+      dockerfile: Dockerfile.vm-direct
+    image: devmcp-vultr-direct:local
+    restart: unless-stopped
+    env_file:
+      - /etc/devmcp/direct.env
+    environment:
+      WORKSPACE_BACKEND: local
+      VM_EXECUTION_MODE: direct
+      AUTH_DB_PATH: /data/dev-mcp-auth.sqlite
+      PORT: "8000"
+      AGENT_JOBS_ENABLED: "0"
+      DESKTOP_TOOLS_ENABLED: "0"
+    ports:
+      - "127.0.0.1:8742:8000"
+    volumes:
+      - /srv/devmcp-workspaces:/workspaces:rw
+      - /srv/devmcp-direct-state:/data:rw
+      # Dedicated, owner-authorized SSH identity stays root-owned.
+      - /etc/devmcp/host-admin:/etc/devmcp/host-admin:ro
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    read_only: true
+    tmpfs:
+      - /tmp:rw,nosuid,nodev,size=2g
+    cap_drop: [ALL]
+    cap_add: [SETUID, SETGID, CHOWN, DAC_OVERRIDE]
+    security_opt:
+      - no-new-privileges:true
+    init: true
+    logging:
+      driver: json-file
+      options:
+        max-size: "5m"
+        max-file: "3"

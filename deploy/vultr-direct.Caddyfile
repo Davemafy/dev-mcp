@@ -1,0 +1,8 @@
+# Optional HTTPS reverse proxy if TCP 443 is free and DNS already points to Vultr.
+# Does not claim port 80: Refit or another service may already use it.
+{
+    auto_https disable_redirects
+}
+{$DEVMCP_DOMAIN} {
+    reverse_proxy 127.0.0.1:8742
+}

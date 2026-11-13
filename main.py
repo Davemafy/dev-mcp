@@ -1,4 +1,4 @@
-"""dev-mcp: Python FastMCP gateway on Railway, persistent E2B development workspace."""
+"""dev-mcp: authenticated FastMCP gateway, deployable directly to Vultr."""
 from __future__ import annotations
 
 import os
@@ -22,7 +22,7 @@ def build_app(machine_factory=None):
     oauth=OAuth(settings)
     machine=build_machine(oauth,sandbox_factory=machine_factory)
     host_access=HostAccess.from_env()
-    mcp=FastMCP('dev-mcp · E2B cloud machine')
+    mcp=FastMCP('dev-mcp · private development machine')
 
     @mcp.tool()
     def workspace_create() -> dict:
@@ -124,7 +124,11 @@ def build_app(machine_factory=None):
         return visit_browser(machine, workspace_id, url, action, selector, value)
 
     extra_routes, jobs, feature_status = install_capabilities(mcp, machine, oauth)
-    vm_routes, vm_link = register_vm_tools(mcp, oauth)
+    if os.getenv("VM_EXECUTION_MODE") == "direct":
+        from direct_vm import register_direct_vm_tools
+        vm_routes, vm_link = register_direct_vm_tools(mcp, oauth)
+    else:
+        vm_routes, vm_link = register_vm_tools(mcp, oauth)
 
     async def health(request: Request):
         return JSONResponse({

@@ -109,6 +109,11 @@ def build_machine(oauth, sandbox_factory=None):
     if provider == "e2b":
         from machine import Machine
         return Machine(oauth, sandbox_factory=sandbox_factory)
+    if provider == "local":
+        if sandbox_factory is not None:
+            raise ValueError("Local Vultr backend cannot use an E2B sandbox factory")
+        from direct_vm import LocalMachine
+        return LocalMachine(oauth)
     if provider == "worker":
         if sandbox_factory is not None:
             raise ValueError("Cannot override a worker backend with an E2B factory")
