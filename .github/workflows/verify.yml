@@ -104,8 +104,12 @@ jobs:
         run: |
           set -euo pipefail
           bash -n deploy/bootstrap-vultr-native.sh deploy/setup-native-host-ssh.sh
+          # CI has no /opt/devmcp-python; substitute the runner's Python only
+          # for unit syntax verification. The real path is checked on Vultr.
           if command -v systemd-analyze >/dev/null; then
-            systemd-analyze verify deploy/devmcp-native.service
+            sed "s@^ExecStart=.*@ExecStart=$(command -v python) -V@" \
+              deploy/devmcp-native.service > /tmp/devmcp-native.service
+            systemd-analyze verify /tmp/devmcp-native.service
           fi
           python -m compileall -q direct_vm.py vm_worker.py host_admin.py
           python -m pytest -q tests/test_native_vultr.py tests/test_direct_vm.py
