@@ -50,7 +50,7 @@ def test_ssh_pins_host_key_and_does_not_export_key(monkeypatch, tmp_path):
     assert "StrictHostKeyChecking=yes" in captured["argv"]
     assert "BatchMode=yes" in captured["argv"]
     assert "ClearAllForwardings=yes" in captured["argv"]
-    assert captured["argv"][-1] == "id -u"
+    assert captured["argv"][-1] == "'id -u'"
     assert "mock private key" not in str(result)
     with pytest.raises(ValueError, match="Invalid host command"):
         host_admin.run_host_command("")
