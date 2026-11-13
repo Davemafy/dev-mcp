@@ -21,6 +21,7 @@ from starlette.routing import Route
 _ACTIONS = frozenset({
     "create", "recover", "status", "close", "read", "write", "list",
     "run", "start", "processes", "stop", "artifact_read",
+    "host_admin_status", "host_admin_run",
 })
 _VM_ID = re.compile(r"^[0-9a-f]{32}$")
 MAX_ARGS = 550_000
@@ -266,6 +267,25 @@ def register_vm_tools(mcp, oauth):
     def vm_status() -> dict:
         """Check persistent Vultr development worker presence and queue health."""
         return link.status()
+
+    @mcp.tool()
+    def vm_host_admin_status() -> dict:
+        """Check the owner-authorized SSH administration connection to the Vultr host."""
+        return link.submit("host_admin_status")
+
+    @mcp.tool()
+    def vm_host_admin_run(command: str, timeout_seconds: int = 90) -> dict:
+        """Run an audited administrator command on the owner's pinned Vultr VM.
+
+        Requires one-time owner setup on Vultr. Commands run via a dedicated
+        SSH identity and passwordless sudo, never through the Docker socket.
+        """
+        if not isinstance(command, str) or not 1 <= len(command) <= 10000 or "\x00" in command:
+            raise ValueError("Invalid host command")
+        return link.submit("host_admin_run", {
+            "command": command,
+            "timeout_seconds": min(max(int(timeout_seconds), 1), 600),
+        })
 
     @mcp.tool()
     def vm_workspace_create() -> dict:

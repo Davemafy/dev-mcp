@@ -21,6 +21,8 @@ import time
 from urllib.parse import urlsplit
 from urllib.request import Request, urlopen
 
+from host_admin import admin_status, run_host_command
+
 ROOT = Path("/workspaces")
 IDENT = re.compile(r"^[a-f0-9]{32}$")
 UID = 10001
@@ -121,6 +123,12 @@ def execute(action, args):
             p.name for p in ROOT.iterdir() if
             p.is_dir() and not p.is_symlink() and IDENT.fullmatch(p.name)
         )[:100]}
+    # Host administration is a separate SSH identity and execution boundary;
+    # development workspaces never receive the private key.
+    if action == "host_admin_status":
+        return admin_status()
+    if action == "host_admin_run":
+        return run_host_command(args.get("command"), args.get("timeout_seconds", 90))
     wid = args.get("worker_id")
     root = _root(wid)
     if action == "status":

@@ -4,7 +4,7 @@ FROM node:22-bookworm-slim
 # of the image, not a mutable runtime filesystem.
 RUN apt-get update -qq \
     && apt-get install -y -qq --no-install-recommends \
-       python3 python3-pip python3-venv git curl ca-certificates \
+       python3 python3-pip python3-venv git curl ca-certificates openssh-client \
        ffmpeg libatomic1 fonts-liberation \
     && rm -rf /var/lib/apt/lists/*
 
@@ -16,7 +16,7 @@ RUN python3 -m venv /opt/devmcp-python \
     && /opt/devmcp-python/bin/python -m playwright install --with-deps chromium-headless-shell \
     && chmod -R a+rX /opt/devmcp-browsers /opt/devmcp-python
 
-COPY vm_worker.py /opt/devmcp/vm_worker.py
+COPY vm_worker.py host_admin.py /opt/devmcp/
 COPY tools/scene_audit.py /opt/devmcp/scene_audit.py
 ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1
 WORKDIR /opt/devmcp

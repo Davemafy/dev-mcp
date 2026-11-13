@@ -9,9 +9,13 @@ services:
     env_file: /etc/devmcp/vm-worker.env
     volumes:
       - /srv/devmcp-workspaces:/workspaces:rw
+      # SSH identity stays root-owned on the host; never mounted into workspaces.
+      - /etc/devmcp/host-admin:/etc/devmcp/host-admin:ro
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     read_only: true
     tmpfs:
-      - /tmp:rw,nosuid,nodev,size=128m
+      - /tmp:rw,nosuid,nodev,size=2g
     cap_drop:
       - ALL
     cap_add:
@@ -21,12 +25,9 @@ services:
       - DAC_OVERRIDE
     security_opt:
       - no-new-privileges:true
-    # Keep conservative defaults while sharing this host with Refit.
-    # Optional capacity overrides require a deliberate worker-only redeploy.
-    cpus: ${DEVMCP_VM_CPUS:-1.0}
-    mem_limit: ${DEVMCP_VM_RAM:-1024m}
-    memswap_limit: ${DEVMCP_VM_RAM:-1024m}
-    pids_limit: ${DEVMCP_VM_PIDS:-128}
+    # No CPU/RAM throttling: use available host resources on the owner's VM.
+    # Linux still enforces real host limits and may OOM-kill runaway processes.
+    pids_limit: ${DEVMCP_VM_PIDS:-2048}
     init: true
     logging:
       driver: json-file
