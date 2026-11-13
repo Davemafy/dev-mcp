@@ -100,7 +100,7 @@ if [[ ! -f "/etc/letsencrypt/live/$domain/fullchain.pem" ]]; then
     DEBIAN_FRONTEND=noninteractive apt-get install -y -qq certbot
   fi
   certbot certonly --webroot --webroot-path "$webroot" \
-    --domain "$domain" --non-interactive --agree-tos \
+    --domain "$domain" --cert-name "$domain" --non-interactive --agree-tos \
     --register-unsafely-without-email --keep-until-expiring
 fi
 
