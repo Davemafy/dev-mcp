@@ -80,7 +80,7 @@ def _command(root, command):
 
 def run_command(root, command, timeout=90):
     args, env = _command(root, command)
-    timeout = max(1, min(int(timeout), 180))
+    timeout = max(1, min(int(timeout), 600))
     with tempfile.TemporaryFile() as stdout, tempfile.TemporaryFile() as stderr:
         proc = subprocess.Popen(
             args, cwd=str(root), env=env, stdin=subprocess.DEVNULL,
@@ -202,8 +202,6 @@ def execute(action, args):
     if action == "run":
         return run_command(root, args.get("command"), args.get("timeout_seconds", 90))
     if action == "start":
-        if sum(proc.poll() is None for (w, _), proc in RUNNING.items() if w == wid) >= 4:
-            raise ValueError("Too many background processes")
         cmd, env = _command(root, args.get("command"))
         proc = subprocess.Popen(
             cmd, cwd=str(root), env=env, stdin=subprocess.DEVNULL,

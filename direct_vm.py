@@ -70,7 +70,7 @@ class LocalMachine:
             raise ValueError("Invalid command")
         return execute("run", {"worker_id": self._workspace(handle),
                                "command": command,
-                               "timeout_seconds": min(max(int(timeout_seconds), 1), 180)})
+                               "timeout_seconds": min(max(int(timeout_seconds), 1), 600)})
 
     def start_process(self, handle, command):
         return execute("start", {"worker_id": self._workspace(handle),
