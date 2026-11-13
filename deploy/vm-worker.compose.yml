@@ -27,7 +27,6 @@ services:
       - no-new-privileges:true
     # No CPU/RAM throttling: use available host resources on the owner's VM.
     # Linux still enforces real host limits and may OOM-kill runaway processes.
-    pids_limit: ${DEVMCP_VM_PIDS:-2048}
     init: true
     logging:
       driver: json-file

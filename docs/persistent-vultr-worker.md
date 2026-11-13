@@ -80,10 +80,10 @@ sudo docker compose -f deploy/vm-worker.compose.yml stop
 - The worker container's root filesystem is read-only, no Refit directories
   are mounted, no host Docker socket is exposed, Linux capabilities are
   reduced, and there are **no published ports**.
-- Docker enforces a 1-vCPU, 1-GiB RAM, 128-PID budget, and bounded logs.
-  It shares the VM's underlying disk. Do **not** run untrusted jobs or
-  uncontrolled disk-intensive workloads on a Refit production host; allocate
-  a separate VM or filesystem quota before doing that.
+- The owner-operated worker has no Docker-imposed CPU, RAM or PID cap.
+  Host resource availability and kernel limits still apply; bounded logs
+  remain enabled. It shares the VM's underlying disk. Do **not** run untrusted
+  or uncontrolled disk-intensive workloads on a shared production host.
 - Files survive worker container restarts under `/srv/devmcp-workspaces`.
   Background *processes* do not survive container recreation; the filesystem
   and execution receipts do.

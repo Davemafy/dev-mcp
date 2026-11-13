@@ -8,7 +8,8 @@ It is not safe for public/multi-tenant execution of untrusted commands.
 The worker's Compose file no longer caps CPU or RAM. On an 8-vCPU/16-GB VM,
 the worker can use all available capacity, subject to host OS and other
 services. It is not guaranteed 16 GB of *free* memory; an OOM can still occur.
-The worker's default PID ceiling is 2048. Container filesystem remains
+There is no worker-specific CPU, RAM, or PID cap. The Linux host's actual
+resources and kernel limits still apply. Container filesystem remains
 read-only; source files live in /srv/devmcp-workspaces.
 
 ## One-time authorization on Vultr
@@ -66,8 +67,8 @@ cat /sys/fs/cgroup/cpu.max
 cat /sys/fs/cgroup/pids.max
 ```
 
-Inside DevMCP's worker, the first two should return `max` and the third
-should return `2048` unless explicitly overridden. If host SSH fails,
+Inside DevMCP's worker, the first two should return `max`; the PID limit
+should likewise be `max` unless inherited from a higher-level cgroup. If host SSH fails,
 inspect the Docker bridge firewall and sshd service without relaxing
 `StrictHostKeyChecking`.
 
