@@ -1,9 +1,0 @@
-# Optional direct HTTPS on a host where TCP 443 is not already occupied.
-# The host-networked proxy reaches the private direct gateway at 127.0.0.1:8742.
-# Port 80 is deliberately not claimed, preserving existing services.
-{
-    auto_https disable_redirects
-}
-{$DEVMCP_DOMAIN} {
-    reverse_proxy 127.0.0.1:8742
-}
