@@ -73,6 +73,8 @@ def run_host_command(command, timeout=90):
         proc = subprocess.Popen(
             args, stdin=subprocess.DEVNULL,
             stdout=stdout, stderr=stderr, close_fds=True,
+            # Do not pass the Railway worker bearer token to the SSH process.
+            env={"PATH": "/usr/bin:/bin", "HOME": "/nonexistent", "LANG": "C.UTF-8"},
             start_new_session=True,
         )
         try:
