@@ -29,7 +29,10 @@ else
   fi
   useradd -u 10001 -g 10001 -m -d /home/devmcp -s /usr/sbin/nologin devmcp
 fi
-# Do not chown /srv/devmcp-workspaces: existing folders are owned by UID 10001.
+# Change ONLY the parent directory's group/mode so the native UID 10001
+# service can create new workspaces. Do not recursively change old project files.
+chgrp devmcp /srv/devmcp-workspaces
+chmod 2770 /srv/devmcp-workspaces
 install -d -m 0700 -o devmcp -g devmcp /srv/devmcp-native-state
 install -d -m 0700 -o root -g root /etc/devmcp
 envfile=/etc/devmcp/native.env
