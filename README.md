@@ -1,6 +1,31 @@
 # dev-mcp
 
-A private cloud development machine exposed through MCP. Railway hosts the Python FastMCP gateway; each workspace is an E2B Linux sandbox. The gateway does not execute arbitrary terminal commands itself.
+A single-owner remote development environment exposed through authenticated MCP.
+
+## Primary deployment: native Vultr + systemd
+
+The gateway and development commands run directly on the Ubuntu VM, without
+Docker, Railway, or a polling worker. ChatGPT uses an HTTPS MCP endpoint;
+owner-authorized SSH handles root-level host administration.
+
+```bash
+cd /opt/dev-mcp
+git pull --ff-only origin main
+sudo DEVMCP_DOMAIN=devmcp.davemafy.xyz bash deploy/bootstrap-vultr-native.sh
+curl -fsS http://127.0.0.1:8742/health
+```
+
+Configure a DNS A record and an HTTPS reverse proxy for
+`https://devmcp.davemafy.xyz/mcp`. The service binds only to localhost.
+It preserves the existing `/srv/devmcp-workspaces` directory. **Keep the
+old gateway online until OAuth and workspace recovery have been verified.**
+
+See [Native Vultr setup and rollback](docs/direct-vultr.md).
+
+## Legacy Railway / E2B deployment (rollback reference)
+
+The following setup describes the former Railway + E2B gateway and polling
+worker. It remains available until the native Vultr cutover is verified.
 
 ## Deploy to Railway
 
