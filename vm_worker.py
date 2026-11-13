@@ -23,7 +23,7 @@ from urllib.request import Request, urlopen
 
 from host_admin import admin_status, run_host_command
 
-ROOT = Path("/workspaces")
+ROOT = Path(os.getenv("DEVMCP_WORKSPACE_ROOT", "/workspaces"))
 IDENT = re.compile(r"^[a-f0-9]{32}$")
 UID = 10001
 GID = 10001
@@ -116,7 +116,8 @@ def execute(action, args):
         wid = secrets.token_hex(16)
         folder = ROOT / wid
         folder.mkdir(mode=0o700)
-        os.chown(folder, UID, UID)
+        if os.geteuid() == 0:
+            os.chown(folder, UID, GID)
         return {"worker_id": wid}
     if action == "recover":
         return {"workspaces": sorted(
@@ -165,9 +166,11 @@ def execute(action, args):
                 parent = parent.parent
             for directory in reversed(missing):
                 directory.mkdir(mode=0o700)
-                os.chown(directory, UID, UID)
+                if os.geteuid() == 0:
+                    os.chown(directory, UID, GID)
             path.write_text(data, encoding="utf-8")
-            os.chown(path, UID, UID)
+            if os.geteuid() == 0:
+                os.chown(path, UID, GID)
             return {"path": str(path.relative_to(root)), "bytes": len(data.encode())}
         if not path.is_dir():
             raise ValueError("Not a directory")

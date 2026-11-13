@@ -1,0 +1,38 @@
+[Unit]
+Description=DevMCP native Vultr gateway (single-owner)
+After=network-online.target ssh.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=devmcp
+Group=devmcp
+WorkingDirectory=/opt/dev-mcp
+EnvironmentFile=/etc/devmcp/native.env
+Environment=WORKSPACE_BACKEND=local
+Environment=VM_EXECUTION_MODE=direct
+Environment=DEVMCP_WORKSPACE_ROOT=/srv/devmcp-workspaces
+Environment=DEVMCP_HOST_ADMIN_STATE=/srv/devmcp-native-state/ssh
+Environment=DEVMCP_HOST_ADMIN_HOST=127.0.0.1
+Environment=PLAYWRIGHT_BROWSERS_PATH=/opt/devmcp-browsers
+Environment=AUTH_DB_PATH=/srv/devmcp-native-state/oauth.sqlite
+Environment=AGENT_JOBS_ENABLED=0
+Environment=DESKTOP_TOOLS_ENABLED=0
+Environment=BIND_HOST=127.0.0.1
+Environment=PORT=8742
+Environment=PYTHONUNBUFFERED=1
+ExecStart=/opt/devmcp-python/bin/python /opt/dev-mcp/main.py
+Restart=on-failure
+RestartSec=4
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/srv/devmcp-workspaces /srv/devmcp-native-state
+# No CPUQuota, MemoryMax or TasksMax: use the machine's available resources.
+TasksMax=infinity
+LimitNOFILE=65535
+
+[Install]
+WantedBy=multi-user.target

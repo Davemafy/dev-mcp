@@ -1,53 +1,47 @@
-# Direct Vultr deployment (no Railway gateway or polling worker)
+# Native Vultr DevMCP — systemd + localhost SSH (no Docker)
 
-This is the **single-owner** alternative to the Railway + outbound worker model.
-DevMCP runs the authenticated MCP gateway and development commands in **one**
-Docker service on the Vultr VM. The application is not the Docker host.
+The owner-facing MCP gateway and shell executor run directly on Ubuntu under a
+dedicated **UID 10001** system account, managed by `systemd`.
 
-## Data preservation
+**ChatGPT connects to MCP over HTTPS.** Raw SSH is used for host administration,
+not as the MCP transport. There is no Railway command queue, polling worker,
+or Docker container in the new service.
 
-- Existing `/srv/devmcp-workspaces` is mounted directly at `/workspaces`.
-  Neither bootstrap nor the new compose file deletes or copies the workspaces.
-- OAuth data is stored separately at `/srv/devmcp-direct-state`.
-- Workspace handles are **reissued** via `vm_workspace_recover`: the new
-  HTTPS endpoint has a different OAuth issuer/signing secret from Railway.
-- The old worker continues running during staging. Stop it only after you
-  verify the direct service, HTTPS, owner login and recovered workspaces.
-- Existing shell processes and browser sessions are not transferred between
-  gateway implementations; workspace files are retained.
+## Preservation and deployment
 
-## 1. Prepare DNS and deploy the *private* gateway
+- The existing `/srv/devmcp-workspaces` directories remain in place.
+  They were created as UID 10001, which the native service also uses.
+- `/srv/devmcp-native-state` stores OAuth state and the dedicated SSH identity.
+- During migration, do not write to the same workspace from both the old
+  Railway worker and the new systemd service at once.
+- Existing jobs do not migrate; files do. The new OAuth issuer re-signs
+  all workspaces using `vm_workspace_recover`.
 
-Choose an HTTPS hostname you control (example: `devmcp.davemafy.xyz`).
-Create its DNS A record pointing to your Vultr IPv4 address.
-
-From the Vultr console:
+Point your chosen DevMCP hostname (example `devmcp.davemafy.xyz`) at Vultr's
+public IPv4 address using a DNS A record. Then use the Vultr root console:
 
 ```bash
 cd /opt/dev-mcp
 git pull --ff-only origin main
-sudo DEVMCP_DOMAIN=devmcp.davemafy.xyz bash deploy/bootstrap-vultr-direct.sh
+sudo DEVMCP_DOMAIN=devmcp.davemafy.xyz bash deploy/bootstrap-vultr-native.sh
 curl -fsS http://127.0.0.1:8742/health
 ```
 
-`PUBLIC_BASE_URL` goes in root-owned `/etc/devmcp/direct.env`.
-Do **not** paste OAuth credentials or SSH keys into chat. A new owner password
-is generated into the private container logs on first boot unless supplied
-via `OWNER_PASSWORD` in the environment file. Generated credentials and
-signing secret persist in the mounted state directory.
+The bootstrap installs Python, Playwright Chromium, fonts and FFmpeg on Ubuntu,
+creates the unprivileged service account, sets up owner-authorized SSH and
+starts `devmcp-native.service`. It does not run `docker`, recreate containers,
+or modify /srv/devmcp-workspaces. It is safe to rerun and reuses existing OAuth
+state and host SSH key.
 
-The service listens only at **127.0.0.1:8742**. No public port is exposed;
-Refit's existing public services remain untouched.
+The OAuth owner password is generated on first boot and stored in the private
+state directory. Retrieve it from `sudo journalctl -u devmcp-native` on the
+VM. **Never paste passwords or keys into a chat or commit them to Git.**
 
-## 2. Configure the public HTTPS reverse proxy
+## HTTPS and ChatGPT
 
-Point the hostname's DNS A record at the VM. Route HTTPS requests for the
-new hostname to `127.0.0.1:8742` using the **existing** TLS proxy, if any.
-
-For a host already running Nginx or Caddy, add a **new virtual host**, not
-a replacement of Refit's configuration.
-
-For example, a Caddy site block inside an *existing* Caddyfile:
+The native gateway listens only on `127.0.0.1:8742`. Add a new hostname
+virtual host to the **existing** HTTPS reverse proxy (do not replace Refit's
+routes). Example for an existing Caddy configuration:
 
 ```caddy
 devmcp.davemafy.xyz {
@@ -55,63 +49,63 @@ devmcp.davemafy.xyz {
 }
 ```
 
-If no reverse proxy owns TCP 443, use the optional Caddy installer (it does
-not bind port 80):
+If no reverse proxy is installed, configure one separately. Don't start
+another proxy on TCP 443 if that port is already occupied.
 
-```bash
-sudo DEVMCP_DOMAIN=devmcp.davemafy.xyz bash deploy/start-vultr-direct-tls.sh
-```
-
-The installer refuses to hijack an occupied port 443. If another service
-already owns 443, add a hostname route to that existing reverse proxy instead.
-For Caddy's automatic certificates, the domain must resolve to this Vultr VM
-and TCP 443 must be reachable from the Internet (TLS-ALPN validation).
-
-Verify externally:
+Verify:
 
 ```bash
 curl -fsS https://devmcp.davemafy.xyz/health
 curl -fsS https://devmcp.davemafy.xyz/.well-known/oauth-authorization-server
 ```
 
-`/mcp` must remain protected by the existing OAuth bearer gate. Never
-publish the private loopback port without HTTPS. Rotate any exposed credentials.
+Add `https://devmcp.davemafy.xyz/mcp` in ChatGPT and authenticate with the
+new owner password. Verify `vm_status` has `mode=direct-vultr`, then
+`vm_workspace_recover` returns the original workspaces. Run a read-only
+test command, then verify that `vm_host_admin_status` authenticates over
+pinned SSH to the local host.
 
-## 3. Reconnect ChatGPT to direct DevMCP
-
-Use `https://devmcp.davemafy.xyz/mcp` as the MCP connector endpoint. Sign
-in with the private new owner password. Do not share it in a message.
-
-Verify the new `vm_status` reports `mode: direct-vultr`, then recover and
-inspect the old workspaces with `vm_workspace_recover`. Run one bounded
-command and confirm data paths are unchanged.
-
-The existing `vm_host_admin_run` tool uses the VM owner's separately
-authorized SSH identity, mounted read-only into the gateway. It retains
-host-key pinning, audits command digests, and does not expose the key
-inside unprivileged workspace commands. This is root-equivalent access:
-keep the gateway single-owner and protect its OAuth credentials.
-
-## 4. Cut over / rollback
-
-Only after HTTPS, OAuth, authenticated shell commands and workspace recovery
-pass, stop the old worker:
+Only after the new connection is verified, stop the legacy worker:
 
 ```bash
 cd /opt/dev-mcp
 sudo docker compose -f deploy/vm-worker.compose.yml stop devmcp-vm-worker
 ```
 
-Then retire Railway **manually** after confirming you no longer need its
-OAuth database, active sessions, or other services.
+The **legacy stop command** mentions Docker only because that's how the old
+worker was launched. The new service has no Docker dependency.
 
-Rollback is simply restarting the old worker. The two deployments share
-the same workspace directory, so **do not run destructive write operations
-concurrently against the same workspace**.
+## Native service and raw SSH
+
+`deploy/setup-native-host-ssh.sh` provisions a separate SSH identity owned
+by UID 10001 and authorizes it for `devmcp-admin`. This account has
+`sudo NOPASSWD:ALL`: **this is root-equivalent remote administration**.
+
+SSH uses the independently installed local host Ed25519 key at
+`/etc/ssh/ssh_host_ed25519_key.pub`, strict checking, batch-only
+authentication and no SSH agent or port forwarding. No SSH secret is returned
+through MCP. The service itself runs unprivileged, with writable access
+limited to its own workspace/state directories.
+
+The worker has no Docker CPU, RAM or PID quotas. The native service also has
+no `CPUQuota`, `MemoryMax` or `TasksMax` ceiling. Real hardware and Linux
+kernel limits still apply; workloads can consume enough RAM to trigger OOM.
+
+Useful commands:
 
 ```bash
+sudo systemctl status devmcp-native
+sudo journalctl -u devmcp-native -n 60 --no-pager
+sudo systemctl restart devmcp-native
+```
+
+## Rollback
+
+```bash
+sudo systemctl disable --now devmcp-native
+cd /opt/dev-mcp
 sudo docker compose -f deploy/vm-worker.compose.yml start devmcp-vm-worker
 ```
 
-The direct gateway exposes no CPU/RAM/PID container throttle. Host physical
-memory and Linux kernel limits still apply; exhausting RAM can still OOM.
+Neither action removes the workspaces. Do not tear down Railway until HTTPS,
+OAuth, SSH administration and workspace recovery have been verified.

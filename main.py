@@ -26,7 +26,7 @@ def build_app(machine_factory=None):
 
     @mcp.tool()
     def workspace_create() -> dict:
-        """Create a fresh disposable Linux workspace in E2B; pass its workspace_id to all subsequent tools."""
+        """Create a workspace in the configured execution backend."""
         return machine.create()
 
     @mcp.tool()
@@ -36,7 +36,7 @@ def build_app(machine_factory=None):
 
     @mcp.tool()
     def workspace_close(workspace_id: str) -> dict:
-        """Permanently terminate an E2B machine and discard its filesystem."""
+        """Close the selected workspace and its filesystem (destructive)."""
         return machine.close(workspace_id)
 
     @mcp.tool()
@@ -156,4 +156,4 @@ def build_app(machine_factory=None):
 
 if __name__ == '__main__':
     import uvicorn
-    uvicorn.run(build_app(),host='0.0.0.0',port=int(os.getenv('PORT','8000')),workers=1)
+    uvicorn.run(build_app(),host=os.getenv('BIND_HOST','0.0.0.0'),port=int(os.getenv('PORT','8000')),workers=1)

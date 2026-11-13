@@ -4,7 +4,7 @@ No polling worker, Railway gateway or separate execution queue. The FastMCP
 gateway and workspace executor share one deployment while development commands
 still run as an unprivileged Unix account with a sanitized environment.
 
-The existing /srv/devmcp-workspaces directory is mounted at /workspaces.
+The existing /srv/devmcp-workspaces directory is used as a native host path.
 Recover re-signs existing workspace IDs under the NEW OAuth issuer; previous
 Railway workspace handles do not remain valid on the new endpoint.
 """

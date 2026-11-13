@@ -16,8 +16,8 @@ import stat
 import subprocess
 import tempfile
 
-STATE = Path("/etc/devmcp/host-admin")
-HOST = "host.docker.internal"
+STATE = Path(os.getenv("DEVMCP_HOST_ADMIN_STATE", "/etc/devmcp/host-admin"))
+HOST = os.getenv("DEVMCP_HOST_ADMIN_HOST", "host.docker.internal")
 USER = "devmcp-admin"
 MAX_OUTPUT = 30000
 
@@ -29,7 +29,7 @@ def _ready():
             or any(p.is_symlink() or not p.is_file() for p in (key, known))):
         return False
     return (stat.S_IMODE(key.stat().st_mode) == 0o600
-            and key.stat().st_uid == 0
+            and key.stat().st_uid == os.geteuid()
             and known.stat().st_size < 4096
             and key.stat().st_size < 4096
             and known.read_text().startswith(HOST + " ssh-ed25519 "))
@@ -39,7 +39,7 @@ def admin_status():
     configured = _ready()
     if not configured:
         return {"configured": False, "connected": False,
-                "message": "Run deploy/setup-vm-host-admin.sh on Vultr, then recreate the DevMCP worker."}
+                "message": "Configure the owner-authorized SSH identity for this deployment."}
     result = run_host_command("id -u; nproc; awk '/MemTotal/ {print $2}' /proc/meminfo", 20)
     return {"configured": True, "connected": result["exit_code"] == 0,
             "host": HOST, "exit_code": result["exit_code"],

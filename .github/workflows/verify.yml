@@ -100,33 +100,15 @@ jobs:
             -v devmcp-vm-ci:/workspaces \
             --entrypoint python3 devmcp-vm-worker:ci -c 'import vm_worker as w; x=w.execute("create",{}); y=w.execute("run",{"worker_id":x["worker_id"],"command":"id -u"}); assert y["exit_code"]==0 and y["stdout"].strip()=="10001", y; assert w.execute("status",{"worker_id":x["worker_id"]})["ready"]; print("VM worker sandbox UID isolation verified")'
 
-      - name: Build and smoke-test direct Vultr MCP gateway
+      - name: Verify native Vultr systemd deployment (no Docker)
         run: |
           set -euo pipefail
-          docker build -f Dockerfile.vm-direct -t devmcp-direct:ci .
-          docker volume create devmcp-direct-data-ci
-          docker volume create devmcp-direct-workspaces-ci
-          docker run -d --name devmcp-direct-ci -p 18098:8000 \
-            --cap-drop=ALL --cap-add=SETUID --cap-add=SETGID --cap-add=CHOWN --cap-add=DAC_OVERRIDE \
-            --security-opt=no-new-privileges --read-only \
-            --tmpfs /tmp:rw,nosuid,nodev,size=128m \
-            -v devmcp-direct-data-ci:/data \
-            -v devmcp-direct-workspaces-ci:/workspaces \
-            -e PUBLIC_BASE_URL=https://devmcp.example \
-            -e OWNER_PASSWORD=ci-local-vultr-owner-password-30-characters \
-            -e TOKEN_SIGNING_SECRET=ci-direct-vultr-secret-must-have-32-characters \
-            devmcp-direct:ci
-          trap 'docker logs devmcp-direct-ci || true; docker rm -f devmcp-direct-ci >/dev/null 2>&1 || true; docker volume rm -f devmcp-direct-data-ci devmcp-direct-workspaces-ci >/dev/null 2>&1 || true' EXIT
-          READY=0
-          for attempt in $(seq 1 45); do
-            if curl -fsS --max-time 2 http://127.0.0.1:18098/health > /tmp/devmcp-direct-health.json; then READY=1; break; fi
-            sleep 1
-          done
-          test "$READY" = "1"
-          grep -q '"mode":"direct-vultr"' /tmp/devmcp-direct-health.json
-          test "$(curl -s -o /dev/null -w '%{http_code}' -X POST http://127.0.0.1:18098/mcp)" = "401"
-          docker exec devmcp-direct-ci python -c 'from auth import OAuth,Settings; from direct_vm import LocalMachine; m=LocalMachine(OAuth(Settings("https://devmcp.example","p"*30,"s"*42,"/data/ci-smoke.sqlite"))); h=m.create()["workspace_id"]; assert m.run(h,"id -u")["stdout"].strip()=="10001"; assert len(m.recover()["workspaces"])==1; print("Direct Vultr workspace recovery and UID isolation verified")'
-          echo "Direct gateway HTTP/OAuth/local shell smoke test passed."
+          bash -n deploy/bootstrap-vultr-native.sh deploy/setup-native-host-ssh.sh
+          if command -v systemd-analyze >/dev/null; then
+            systemd-analyze verify deploy/devmcp-native.service
+          fi
+          python -m compileall -q direct_vm.py vm_worker.py host_admin.py
+          python -m pytest -q tests/test_native_vultr.py tests/test_direct_vm.py
 
       - name: Verify mounted volume survives restart without running app as root
         run: |
