@@ -55,10 +55,17 @@ devmcp.davemafy.xyz {
 }
 ```
 
-If no reverse proxy owns port 443, you can deploy a dedicated Caddy instance
-using `deploy/vultr-direct.Caddyfile` as a starting point. Do **not** start
-another public proxy on ports already in use. Caddy TLS issuance requires
-reachable DNS and a compatible ACME validation path.
+If no reverse proxy owns TCP 443, use the optional Caddy installer (it does
+not bind port 80):
+
+```bash
+sudo DEVMCP_DOMAIN=devmcp.davemafy.xyz bash deploy/start-vultr-direct-tls.sh
+```
+
+The installer refuses to hijack an occupied port 443. If another service
+already owns 443, add a hostname route to that existing reverse proxy instead.
+For Caddy's automatic certificates, the domain must resolve to this Vultr VM
+and TCP 443 must be reachable from the Internet (TLS-ALPN validation).
 
 Verify externally:
 

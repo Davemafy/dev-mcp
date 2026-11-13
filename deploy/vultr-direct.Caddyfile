@@ -1,5 +1,6 @@
-# Optional HTTPS reverse proxy if TCP 443 is free and DNS already points to Vultr.
-# Does not claim port 80: Refit or another service may already use it.
+# Optional direct HTTPS on a host where TCP 443 is not already occupied.
+# The host-networked proxy reaches the private direct gateway at 127.0.0.1:8742.
+# Port 80 is deliberately not claimed, preserving existing services.
 {
     auto_https disable_redirects
 }
